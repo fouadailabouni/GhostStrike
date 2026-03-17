@@ -11,7 +11,7 @@
 GhostStrike runs 103 discrete modules across 22 attack categories, enforces a policy engine before any module fires, records tamper-evident evidence chains, scores reproducibility on a 0–100 scale, and validates effectiveness through an integrated benchmark mode against known-vulnerable targets.
 
 ---
-
+![GhostStrike Screenshot](Repo.png)
 ## Architecture
 
 ```
