@@ -1,0 +1,26 @@
+# GhostStrike v3.0.0 [PHANTOM] — Python Dependencies
+# © 2026 Fouad Ailabouni. All Rights Reserved.
+
+# ── GUI Framework ──
+customtkinter>=5.2.0
+Pillow>=10.0.0
+
+# ── Framework Libraries (used by lib/*.sh Python helpers & GUI) ──
+requests>=2.31.0          # HTTP client for notifications, CVE lookup, webhooks
+jsonschema>=4.21.0        # finding.schema.json validation (lib/finding_ontology.sh)
+PyYAML>=6.0.1             # policy.yaml, scope.yml, benchmark scenario parsing
+rich>=13.7.0              # Terminal progress bars, tables (metrics/reproducibility_report.sh)
+cryptography>=42.0.0      # Credential vault AES-256-GCM encryption
+
+# ── Reporting ──
+jinja2>=3.1.3             # HTML report templating
+weasyprint>=62.0          # HTML → PDF conversion (optional, install separately if needed)
+markdown>=3.5.2           # Markdown report rendering
+
+# ── Utility ──
+python-dateutil>=2.9.0    # Date parsing for engagement timelines
+tabulate>=0.9.0           # Table formatting for CLI reports
+click>=8.1.7              # CLI argument parsing for standalone Python scripts
+
+# ── Build / Packaging ──
+pyinstaller>=6.0.0        # Windows .exe build

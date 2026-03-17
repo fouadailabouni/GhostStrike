@@ -1,0 +1,7 @@
+◈ GHOSTSTRIKE BENCHMARK MODE
+  Running: benchmarks/run_benchmarks.sh --target all --report
+  ========================================================
+
+/home/eragon/Desktop/GhostStrike/bash scripts for pentest/lib/trust_registry.sh: line 13: GS_RED: readonly variable
+
+  [*] Exit code: 1
