@@ -22,5 +22,13 @@ python-dateutil>=2.9.0    # Date parsing for engagement timelines
 tabulate>=0.9.0           # Table formatting for CLI reports
 click>=8.1.7              # CLI argument parsing for standalone Python scripts
 
+# ── AI Co-Pilot (ai_engine/) ──
+# Only needed if you use AI Co-Pilot mode in the GUI; the app itself starts
+# fine without these (the toggle greys out with a clear reason instead of
+# the app failing to launch). API keys are read from lib/vault.sh first,
+# falling back to ANTHROPIC_API_KEY / OPENAI_API_KEY -- see model_provider.py.
+anthropic>=0.40.0         # Claude backend (default)
+openai>=1.0.0             # GPT-4o fallback backend
+
 # ── Build / Packaging ──
 pyinstaller>=6.0.0        # Windows .exe build

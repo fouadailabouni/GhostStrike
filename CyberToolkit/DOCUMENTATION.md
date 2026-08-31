@@ -55,7 +55,7 @@ python ghoststrike.py
 ### Run a module directly
 
 ```bash
-cd "bash scripts for pentest"
+cd bash_scripts_for_pentest
 cp scope.yml.template my_scope.yml
 # edit my_scope.yml with engagement details
 
@@ -210,7 +210,7 @@ Select an engagement in the GUI. All findings, artifacts, and sessions are autom
 Click `FINDINGS` in the GUI to see a severity-sorted table, or run:
 
 ```bash
-# From bash scripts for pentest/
+# From bash_scripts_for_pentest/
 source lib/finding_ontology.sh
 gs_finding_summary
 ```

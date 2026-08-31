@@ -23,6 +23,21 @@ try:
     import requests as _requests
 except ImportError:
     _requests = None
+try:
+    from ai_engine.agents import AGENT_REGISTRY, NLPRouterAgent
+    from ai_engine.model_provider import GhostStrikeModelProvider, ModelBackend
+    _AI_ENGINE_AVAILABLE = True
+    _AI_ENGINE_IMPORT_ERROR = ""
+except ImportError as _ai_import_exc:
+    # anthropic/openai SDKs (or the ai_engine package itself) may not be
+    # installed -- AI Co-Pilot mode degrades to disabled with a clear reason
+    # shown in the UI, rather than the app failing to start.
+    AGENT_REGISTRY = {}
+    NLPRouterAgent = None
+    GhostStrikeModelProvider = None
+    ModelBackend = None
+    _AI_ENGINE_AVAILABLE = False
+    _AI_ENGINE_IMPORT_ERROR = str(_ai_import_exc)
 
 # ═══════════════════════════════════════════════════════════════
 # Configuration & Theme
@@ -31,7 +46,7 @@ except ImportError:
 APP_NAME    = "GhostStrike"
 APP_VERSION = "3.0.0"
 APP_CODENAME = "PHANTOM"
-SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bash scripts for pentest")
+SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bash_scripts_for_pentest")
 
 # Offensive dark theme - deep blacks, neon accents
 C = {
@@ -68,64 +83,51 @@ RISK_LEVELS = {
     "03-Wireless-Security":0.5,"20-IoT-Security":0.45,
 }
 
-# ── Trust Level Registry (mirrors lib/trust_registry.sh) ──
-TRUST_REGISTRY = {
-    # SAFE_ENUM — passive, no modification, production-safe
-    "authorization_framework.sh":"SAFE_ENUM","ci_linting_framework.sh":"SAFE_ENUM",
-    "framework_tester.sh":"SAFE_ENUM","json_output_framework.sh":"SAFE_ENUM",
-    "mitre_attack_framework.sh":"SAFE_ENUM","dns_recon.sh":"SAFE_ENUM",
-    "network_traffic_analyzer.sh":"SAFE_ENUM","service_discovery.sh":"SAFE_ENUM",
-    "snmp_enum.sh":"SAFE_ENUM","ssl_tls_analyzer.sh":"SAFE_ENUM",
-    "subdomain_enum.sh":"SAFE_ENUM","email_harvesting_osint.sh":"SAFE_ENUM",
-    "file_integrity_monitor.sh":"SAFE_ENUM","log_analyzer.sh":"SAFE_ENUM",
-    "patch_management_scanner.sh":"SAFE_ENUM","pentest_report_generator.sh":"SAFE_ENUM",
-    "install_pentest_tools.sh":"SAFE_ENUM","incident_response_toolkit.sh":"SAFE_ENUM",
-    "intrusion_detection_system.sh":"SAFE_ENUM","security_metrics_dashboard.sh":"SAFE_ENUM",
-    "threat_intelligence_collector.sh":"SAFE_ENUM","code_quality_checker.sh":"SAFE_ENUM",
-    "dependency_vulnerability_scanner.sh":"SAFE_ENUM","iot_reporting_formatter.sh":"SAFE_ENUM",
-    # VALIDATION — non-destructive active testing
-    "nmap_automation.sh":"VALIDATION","nmap_vulnerability_scanner.sh":"VALIDATION",
-    "vpn_security_assessment.sh":"VALIDATION","firewall_rule_tester.sh":"VALIDATION",
-    "api_security_tester.sh":"VALIDATION","websocket_security_tester.sh":"VALIDATION",
-    "container_security_scanner.sh":"VALIDATION","android_apk_analyzer.sh":"VALIDATION",
-    "ios_app_analyzer.sh":"VALIDATION","aws_security_scanner.sh":"VALIDATION",
-    "azure_gcp_enumeration.sh":"VALIDATION","cloud_storage_bucket_tester.sh":"VALIDATION",
-    "container_orchestration_security.sh":"VALIDATION","iot_cloud_api_tester.sh":"VALIDATION",
-    "iot_coap_tester.sh":"VALIDATION","iot_device_hardening_audit.sh":"VALIDATION",
-    "iot_firmware_analyzer.sh":"VALIDATION","iot_network_isolation_tester.sh":"VALIDATION",
-    "iot_supply_chain_scanner.sh":"VALIDATION","iot_wireless_ble_scanner.sh":"VALIDATION",
-    "iot_zigbee_thread_scanner.sh":"VALIDATION","pentest_automation.sh":"VALIDATION",
-    "bluetooth_scanner.sh":"VALIDATION","iot_security_tester.sh":"VALIDATION",
-    "system_config_audit.sh":"VALIDATION","webapp_testing.sh":"VALIDATION",
-    # HIGH_IMPACT — active exploitation, requires authorization
-    "nmap_waf_bypass.sh":"HIGH_IMPACT","graphql_security_tester.sh":"HIGH_IMPACT",
-    "jwt_token_manipulator.sh":"HIGH_IMPACT","owasp_top10_scanner.sh":"HIGH_IMPACT",
-    "sqlmap_automated_pentest.sh":"HIGH_IMPACT","advanced_web_app_tester.sh":"HIGH_IMPACT",
-    "wifi_penetration_tester.sh":"HIGH_IMPACT","database_attack_vectors.sh":"HIGH_IMPACT",
-    "database_penetration_tester.sh":"HIGH_IMPACT","nosql_database_tester.sh":"HIGH_IMPACT",
-    "active_directory_tester.sh":"HIGH_IMPACT","kerberos_attack_suite.sh":"HIGH_IMPACT",
-    "ntlm_relay_tester.sh":"HIGH_IMPACT","hash_analyzer_cracker.sh":"HIGH_IMPACT",
-    "password_attack_suite.sh":"HIGH_IMPACT","password_spraying_campaign.sh":"HIGH_IMPACT",
-    "phishing_campaign_automation.sh":"HIGH_IMPACT","social_engineering_toolkit.sh":"HIGH_IMPACT",
-    "privilege_escalation_checker.sh":"HIGH_IMPACT","thick_client_tester.sh":"HIGH_IMPACT",
-    "ics_scada_tester.sh":"HIGH_IMPACT","iot_default_creds_scanner.sh":"HIGH_IMPACT",
-    "iot_fuzz_coap_mqtt.sh":"HIGH_IMPACT","iot_mqtt_tester.sh":"HIGH_IMPACT",
-    "iot_ota_interceptor.sh":"HIGH_IMPACT","authentication_bypass.sh":"HIGH_IMPACT",
-    "authorization_bypass.sh":"HIGH_IMPACT","captcha_bypass.sh":"HIGH_IMPACT",
-    "captive_portal_bypass.sh":"HIGH_IMPACT","certificate_pinning_bypass.sh":"HIGH_IMPACT",
-    "csrf_protection_bypass.sh":"HIGH_IMPACT","dlp_bypass.sh":"HIGH_IMPACT",
-    "dns_tunneling_bypass.sh":"HIGH_IMPACT","ids_ips_bypass.sh":"HIGH_IMPACT",
-    "input_validation_bypass.sh":"HIGH_IMPACT","kerberos_bypass.sh":"HIGH_IMPACT",
-    "ldap_injection_bypass.sh":"HIGH_IMPACT","network_segmentation_bypass.sh":"HIGH_IMPACT",
-    "proxy_load_balancer_bypass.sh":"HIGH_IMPACT","rate_limiting_bypass.sh":"HIGH_IMPACT",
-    "smb_relay_bypass.sh":"HIGH_IMPACT","ssl_tls_bypass.sh":"HIGH_IMPACT",
-    # LAB_ONLY — destructive/evasive, isolated lab environments only
-    "metasploit_automation.sh":"LAB_ONLY","data_exfiltration_simulator.sh":"LAB_ONLY",
-    "persistence_mechanisms.sh":"LAB_ONLY","docker_lab_setup.sh":"LAB_ONLY",
-    "endpoint_detection_bypass.sh":"LAB_ONLY","sandbox_escape.sh":"LAB_ONLY",
-    "siem_log_evasion.sh":"LAB_ONLY","iot_physical_attack_plan.sh":"LAB_ONLY",
-    "iot_uart_jtag_helper.sh":"LAB_ONLY","iot_firmware_emulation_runner.sh":"LAB_ONLY",
-}
+# ── Trust Level Registry ──
+# Loaded live from MODULE_INVENTORY.csv (the same file tests/generate_module_inventory.sh
+# regenerates from the real bash-side policy.yaml + lib/trust_registry.sh) instead of a
+# hardcoded copy, so this can no longer silently drift from the authoritative bash-side
+# trust levels the way the old static dict did. Keyed primarily by "category/filename"
+# (relative path) so that scripts sharing a basename across categories -- e.g. both
+# 01-Network-Security/system_config_audit.sh and 08-System-Security/system_config_audit.sh
+# exist, with different trust levels -- resolve correctly instead of colliding on a
+# single basename key. A basename-only fallback dict is kept for the rare call site that
+# doesn't have a category available; that path can still collide and should be migrated
+# to pass category when practical.
+_MODULE_INVENTORY_CSV = os.path.join(SCRIPTS_DIR, "MODULE_INVENTORY.csv")
+
+def _load_trust_registry():
+    by_path, by_basename = {}, {}
+    try:
+        import csv
+        with open(_MODULE_INVENTORY_CSV, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                path = (row.get("script_path") or "").strip()
+                trust = (row.get("trust_level") or "").strip()
+                if not path or not trust or trust == "UNDOCUMENTED":
+                    continue
+                by_path[path] = trust
+                # First writer for a given basename wins; later duplicates are left to
+                # the by_path lookup, which is the one that's actually collision-safe.
+                by_basename.setdefault(os.path.basename(path), trust)
+    except (OSError, csv.Error):
+        pass  # Inventory missing/unreadable -- get_trust_level() falls back to VALIDATION.
+    return by_path, by_basename
+
+TRUST_REGISTRY_BY_PATH, TRUST_REGISTRY_BY_BASENAME = _load_trust_registry()
+
+def get_trust_level(script):
+    """Resolve a script dict's trust level via MODULE_INVENTORY.csv, category-qualified
+    first to avoid basename collisions, then falling back to basename-only, then VALIDATION."""
+    if not script:
+        return "VALIDATION"
+    category = script.get("category", "")
+    filename = script.get("filename", "")
+    if category and filename:
+        trust = TRUST_REGISTRY_BY_PATH.get(f"{category}/{filename}")
+        if trust:
+            return trust
+    return TRUST_REGISTRY_BY_BASENAME.get(filename, "VALIDATION")
 TRUST_COLORS = {
     "SAFE_ENUM":"#3b82f6","VALIDATION":"#22c55e",
     "HIGH_IMPACT":"#ffb020","LAB_ONLY":"#ff3e3e",
@@ -170,11 +172,18 @@ def discover_scripts(base_dir):
         for sf in sorted(cat_dir.iterdir()):
             if sf.suffix == ".sh":
                 fname = sf.name
-                meta = SCRIPT_DATABASE.get(fname, {
+                # A handful of basenames exist in more than one category
+                # (e.g. system_config_audit.sh in both 01-Network-Security
+                # and 08-System-Security, with different real trust levels
+                # and behavior) -- SCRIPT_DATABASE disambiguates those with a
+                # "category/filename" key. Try that first, falling back to
+                # the bare filename for the ~160 non-colliding entries.
+                qualified = f"{cat_dir.name}/{fname}"
+                meta = SCRIPT_DATABASE.get(qualified, SCRIPT_DATABASE.get(fname, {
                     "name": sf.stem.replace("_"," ").title(), "category": cat_dir.name,
                     "description": f"Module: {fname}", "params": [], "dependencies": [],
                     "quality": NEEDS_WORK, "expected_output": "",
-                }).copy()
+                })).copy()
                 meta["path"] = str(sf)
                 meta["filename"] = fname
                 scripts.append(meta)
@@ -278,6 +287,13 @@ class GhostStrikeApp(ctk.CTk):
         self.tool_panel_labels: dict = {}
         self.tool_progress_bar = None
 
+        # AI Co-Pilot mode
+        self.ai_mode = False
+        self.ai_agent_name = "Red Team"
+        self.ai_backend = "claude"
+        self.vault_master_key = None   # session-only; never written to disk
+        self._ai_running = False
+
         self._build_ui()
         self._populate_categories()
         self._show_welcome_screen()
@@ -331,7 +347,7 @@ class GhostStrikeApp(ctk.CTk):
         ctk.CTkLabel(lr, text="STRIKE", font=ctk.CTkFont(family="Consolas", size=28, weight="bold"),
                      text_color=C["neon_red"]).pack(side="left")
         ctk.CTkLabel(logo, text=f"OFFENSIVE SECURITY PLATFORM  \u2502  v{APP_VERSION} [{APP_CODENAME}]",
-                     font=ctk.CTkFont(family="Consolas", size=8),
+                     font=ctk.CTkFont(family="Consolas", size=12),
                      text_color=C["text_ghost"]).pack(pady=(2, 0))
 
         # Search
@@ -340,7 +356,7 @@ class GhostStrikeApp(ctk.CTk):
         self.search_entry = ctk.CTkEntry(sf, placeholder_text="\u2315  Search modules...",
             textvariable=self.search_var, height=36, corner_radius=5,
             fg_color=C["slate"], border_color=C["border"], text_color=C["text"],
-            font=ctk.CTkFont(family="Consolas", size=11))
+            font=ctk.CTkFont(family="Consolas", size=13))
         self.search_entry.pack(fill="x")
 
         # Filters
@@ -349,7 +365,7 @@ class GhostStrikeApp(ctk.CTk):
         self.filter_buttons = {}
         for label, val, clr in [("ALL", "ALL", C["text_ghost"]), ("OPERATIONAL", GOOD, C["neon_green"])]:
             b = ctk.CTkButton(ff, text=label, width=85, height=22,
-                font=ctk.CTkFont(family="Consolas", size=8, weight="bold"), corner_radius=3,
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"), corner_radius=3,
                 fg_color=clr if val == "ALL" else C["slate"],
                 hover_color=C["hover"], text_color=C["text"],
                 command=lambda v=val: self._set_quality_filter(v))
@@ -373,13 +389,13 @@ class GhostStrikeApp(ctk.CTk):
             c.pack(side="left", expand=True)
             ctk.CTkLabel(c, text=val, font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
                          text_color=clr).pack()
-            ctk.CTkLabel(c, text=lbl, font=ctk.CTkFont(family="Consolas", size=7),
+            ctk.CTkLabel(c, text=lbl, font=ctk.CTkFont(family="Consolas", size=12),
                          text_color=C["text_ghost"]).pack()
 
         # Threat Level
         thr = ctk.CTkFrame(sb, fg_color="transparent")
         thr.grid(row=4, column=0, sticky="ew", padx=14, pady=(0, 3))
-        ctk.CTkLabel(thr, text="THREAT LEVEL", font=ctk.CTkFont(family="Consolas", size=7),
+        ctk.CTkLabel(thr, text="THREAT LEVEL", font=ctk.CTkFont(family="Consolas", size=12),
                      text_color=C["text_ghost"]).pack(side="left")
         self.threat_bar = ctk.CTkProgressBar(thr, height=5, corner_radius=2,
             fg_color=C["slate"], progress_color=C["neon_green"])
@@ -399,10 +415,10 @@ class GhostStrikeApp(ctk.CTk):
         ah = ctk.CTkFrame(ap, fg_color="transparent")
         ah.pack(fill="x", padx=8, pady=(6, 2))
         ctk.CTkLabel(ah, text="⚡ ARSENAL",
-            font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color=C["neon_cyan"]).pack(side="left")
         self.arsenal_status_lbl = ctk.CTkLabel(ah, text="checking...",
-            font=ctk.CTkFont(family="Consolas", size=8),
+            font=ctk.CTkFont(family="Consolas", size=12),
             text_color=C["text_ghost"])
         self.arsenal_status_lbl.pack(side="right")
         self.tool_progress_bar = ctk.CTkProgressBar(ap, height=4, corner_radius=2,
@@ -421,18 +437,18 @@ class GhostStrikeApp(ctk.CTk):
         eng_color = C["neon_green"] if self.active_engagement else C["neon_amber"]
         self.engagement_label = ctk.CTkLabel(ef,
             text=f"⚑ {eng_id[:22]}",
-            font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color=eng_color)
         self.engagement_label.pack(side="left")
         ebf = ctk.CTkFrame(ef, fg_color="transparent")
         ebf.pack(side="right")
         ctk.CTkButton(ebf, text="+NEW", width=44, height=18,
-            font=ctk.CTkFont(family="Consolas", size=7), corner_radius=3,
+            font=ctk.CTkFont(family="Consolas", size=12), corner_radius=3,
             fg_color=C["card"], hover_color=C["hover"], border_width=1,
             border_color=C["neon_green"], text_color=C["neon_green"],
             command=self._new_engagement_dialog).pack(side="left", padx=2)
         ctk.CTkButton(ebf, text="LIST", width=38, height=18,
-            font=ctk.CTkFont(family="Consolas", size=7), corner_radius=3,
+            font=ctk.CTkFont(family="Consolas", size=12), corner_radius=3,
             fg_color=C["card"], hover_color=C["hover"], border_width=1,
             border_color=C["border"], text_color=C["text_dim"],
             command=self._switch_engagement_dialog).pack(side="left", padx=2)
@@ -444,10 +460,10 @@ class GhostStrikeApp(ctk.CTk):
         fti = ctk.CTkFrame(ft, fg_color="transparent")
         fti.pack(fill="x", padx=8, pady=4)
         ctk.CTkLabel(fti, text="\u00a9 2026 Fouad Ailabouni  \u2502  All Rights Reserved",
-                     font=ctk.CTkFont(family="Consolas", size=7),
+                     font=ctk.CTkFont(family="Consolas", size=12),
                      text_color=C["text_ghost"]).pack(side="left")
         ctk.CTkButton(fti, text="⚙", width=20, height=16,
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             fg_color="transparent", hover_color=C["hover"], text_color=C["text_ghost"],
             command=self._show_settings).pack(side="right")
 
@@ -475,25 +491,25 @@ class GhostStrikeApp(ctk.CTk):
         self.script_title_label.pack(anchor="w")
         self.script_desc_label = ctk.CTkLabel(ia,
             text="// Choose a module from the arsenal to begin engagement",
-            font=ctk.CTkFont(family="Consolas", size=10), text_color=C["text_ghost"], wraplength=600)
+            font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_ghost"], wraplength=600)
         self.script_desc_label.pack(anchor="w")
 
         bf = ctk.CTkFrame(top, fg_color="transparent")
         bf.grid(row=0, column=1, padx=20, sticky="e")
 
         self.quality_badge = ctk.CTkLabel(bf, text="",
-            font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             width=90, height=20, corner_radius=3, fg_color=C["card"])
         self.quality_badge.pack(side="left", padx=3)
         self.quality_badge.pack_forget()
 
         self.trust_badge = ctk.CTkLabel(bf, text="",
-            font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             width=110, height=20, corner_radius=3, fg_color=C["card"])
         self.trust_badge.pack(side="left", padx=3)
         self.trust_badge.pack_forget()
 
-        btn_cfg = dict(width=60, height=26, font=ctk.CTkFont(family="Consolas", size=9),
+        btn_cfg = dict(width=60, height=26, font=ctk.CTkFont(family="Consolas", size=13),
                        fg_color=C["card"], hover_color=C["hover"],
                        border_width=1, border_color=C["border"], corner_radius=3, state="disabled")
         self.doc_btn = ctk.CTkButton(bf, text="DOCS", command=self._show_docs, **btn_cfg)
@@ -518,10 +534,10 @@ class GhostStrikeApp(ctk.CTk):
         h = ctk.CTkFrame(po, fg_color="transparent")
         h.grid(row=0, column=0, sticky="ew", padx=14, pady=(8, 4))
         ctk.CTkLabel(h, text="\u2699  PARAMETERS",
-                     font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                     font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                      text_color=C["neon_purple"]).pack(side="left")
         self.deps_label = ctk.CTkLabel(h, text="",
-            font=ctk.CTkFont(family="Consolas", size=8), text_color=C["text_ghost"])
+            font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_ghost"])
         self.deps_label.pack(side="right")
 
         self.params_container = ctk.CTkFrame(po, fg_color="transparent")
@@ -532,47 +548,47 @@ class GhostStrikeApp(ctk.CTk):
         af.grid(row=2, column=0, sticky="ew", padx=14, pady=(4, 10))
 
         self.run_btn = ctk.CTkButton(af, text="\u25b6  EXECUTE",
-            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
             fg_color=C["neon_green"], hover_color="#16a34a", text_color="#000",
             height=40, width=170, corner_radius=5, command=self._run_script, state="disabled")
         self.run_btn.pack(side="left", padx=(0, 6))
 
         self.stop_btn = ctk.CTkButton(af, text="\u25a0  ABORT",
-            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
             fg_color=C["neon_red"], hover_color="#991b1b",
             height=40, width=100, corner_radius=5, command=self._stop_script, state="disabled")
         self.stop_btn.pack(side="left", padx=(0, 6))
 
         for txt, cmd in [("CLEAR", self._clear_terminal), ("EXPORT", self._export_log)]:
-            ctk.CTkButton(af, text=txt, font=ctk.CTkFont(family="Consolas", size=10),
+            ctk.CTkButton(af, text=txt, font=ctk.CTkFont(family="Consolas", size=12),
                 fg_color=C["card"], hover_color=C["hover"], border_width=1, border_color=C["border"],
                 height=40, width=75, corner_radius=5, command=cmd).pack(side="left", padx=(0, 4))
 
-        ctk.CTkButton(af, text="BENCH", font=ctk.CTkFont(family="Consolas", size=10),
+        ctk.CTkButton(af, text="BENCH", font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"], border_width=1, border_color=C["neon_cyan"],
             text_color=C["neon_cyan"],
             height=40, width=75, corner_radius=5,
             command=self._run_benchmarks).pack(side="left", padx=(0, 4))
 
-        ctk.CTkButton(af, text="FINDINGS", font=ctk.CTkFont(family="Consolas", size=10),
+        ctk.CTkButton(af, text="FINDINGS", font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"], border_width=1, border_color=C["neon_purple"],
             text_color=C["neon_purple"],
             height=40, width=85, corner_radius=5,
             command=self._show_findings).pack(side="left", padx=(0, 4))
 
-        ctk.CTkButton(af, text="REPORT", font=ctk.CTkFont(family="Consolas", size=10),
+        ctk.CTkButton(af, text="REPORT", font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"], border_width=1, border_color=C["neon_amber"],
             text_color=C["neon_amber"],
             height=40, width=80, corner_radius=5,
             command=self._generate_report).pack(side="left", padx=(0, 4))
 
-        ctk.CTkButton(af, text="GUIDE", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+        ctk.CTkButton(af, text="GUIDE", font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             fg_color=C["neon_green"], hover_color=C["neon_cyan"], text_color=C["obsidian"],
             height=40, width=70, corner_radius=5,
             command=self._show_roadmap_guide).pack(side="left", padx=(0, 4))
 
         self._sessions_btn = ctk.CTkButton(af, text="SESSIONS [0]",
-            font=ctk.CTkFont(family="Consolas", size=10),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"], border_width=1, border_color=C["neon_red"],
             text_color=C["neon_red"], height=40, width=105, corner_radius=5,
             command=self._show_sessions_panel)
@@ -580,11 +596,11 @@ class GhostStrikeApp(ctk.CTk):
 
         sf = ctk.CTkFrame(af, fg_color="transparent")
         sf.pack(side="right", padx=8)
-        self.status_dot = ctk.CTkLabel(sf, text="\u25cf", font=ctk.CTkFont(size=12),
+        self.status_dot = ctk.CTkLabel(sf, text="\u25cf", font=ctk.CTkFont(size=13),
                                         text_color=C["neon_green"])
         self.status_dot.pack(side="left", padx=(0, 4))
         self.status_label = ctk.CTkLabel(sf, text="STANDBY",
-            font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color=C["neon_green"])
         self.status_label.pack(side="left")
 
@@ -602,27 +618,60 @@ class GhostStrikeApp(ctk.CTk):
         dd = ctk.CTkFrame(th, fg_color="transparent")
         dd.pack(side="left", padx=10, pady=7)
         for c in [C["neon_red"], C["neon_amber"], C["neon_green"]]:
-            ctk.CTkLabel(dd, text="\u25cf", font=ctk.CTkFont(size=9), text_color=c, width=10).pack(side="left")
+            ctk.CTkLabel(dd, text="\u25cf", font=ctk.CTkFont(size=13), text_color=c, width=10).pack(side="left")
 
         ctk.CTkLabel(th, text="root@ghoststrike:~# ",
-                     font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                     font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                      text_color=C["term_cmd"]).pack(side="left", pady=3)
         self.term_timer = ctk.CTkLabel(th, text="",
-            font=ctk.CTkFont(family="Consolas", size=8), text_color=C["text_ghost"])
+            font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_ghost"])
         self.term_timer.pack(side="right", padx=10)
 
         # Background session button (visible when process running)
-        self._bg_btn = ctk.CTkButton(th, text="BG", width=30, height=20,
-            font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+        self._bg_btn = ctk.CTkButton(th, text="BG", width=36, height=24,
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             fg_color="transparent", hover_color=C["slate"],
             border_width=1, border_color=C["neon_amber"], text_color=C["neon_amber"],
             corner_radius=3, command=self._background_session)
         self._bg_btn.pack(side="right", padx=2, pady=4)
         self._term_label = ctk.CTkLabel(th, text="",
-            font=ctk.CTkFont(family="Consolas", size=8), text_color=C["neon_red"])
+            font=ctk.CTkFont(family="Consolas", size=12), text_color=C["neon_red"])
         self._term_label.pack(side="right", padx=4)
 
-        self.terminal = ctk.CTkTextbox(tf, font=ctk.CTkFont(family="Consolas", size=12),
+        # Agent persona picker -- only meaningful in AI Co-Pilot mode, but kept
+        # visible (disabled) rather than hidden so its existence is discoverable.
+        self._ai_agent_var = ctk.StringVar(value=self.ai_agent_name)
+        self._ai_agent_cb = ctk.CTkComboBox(th, values=list(AGENT_REGISTRY.keys()) or ["Red Team"],
+            variable=self._ai_agent_var, state="readonly", width=130, height=24,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=C["obsidian"], border_color=C["text_dim"],
+            button_color=C["slate"], dropdown_fg_color=C["slate"],
+            command=lambda v: setattr(self, "ai_agent_name", v))
+        self._ai_agent_cb.pack(side="right", padx=(4, 2), pady=4)
+        self._ai_agent_cb.configure(state="disabled")
+
+        # Manual / AI Co-Pilot mode toggle. Disabled (not hidden) when the
+        # ai_engine package failed to import, so the reason is discoverable
+        # instead of the feature silently not existing.
+        self._ai_mode_btn = ctk.CTkButton(th, text="\U0001f916 MANUAL", width=90, height=24,
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            fg_color="transparent", hover_color=C["slate"],
+            border_width=1, border_color=C["text_dim"], text_color=C["text_dim"],
+            corner_radius=3, command=self._toggle_ai_mode,
+            state="normal" if _AI_ENGINE_AVAILABLE else "disabled")
+        self._ai_mode_btn.pack(side="right", padx=(4, 2), pady=4)
+        if not _AI_ENGINE_AVAILABLE:
+            self._ai_mode_btn.configure(text="AI: N/A")
+            def _show_ai_unavailable(_e=None):
+                messagebox.showinfo(
+                    "AI Co-Pilot unavailable",
+                    "The ai_engine package failed to import:\n\n"
+                    f"{_AI_ENGINE_IMPORT_ERROR}\n\n"
+                    "Install its dependencies (pip install anthropic openai) and restart."
+                )
+            self._ai_mode_btn.configure(command=_show_ai_unavailable, state="normal")
+
+        self.terminal = ctk.CTkTextbox(tf, font=ctk.CTkFont(family="Consolas", size=13),
             fg_color=C["terminal"], text_color=C["term_text"], corner_radius=0,
             wrap="word", state="disabled")
         self.terminal.grid(row=1, column=0, sticky="nsew", padx=1, pady=(0, 1))
@@ -630,15 +679,15 @@ class GhostStrikeApp(ctk.CTk):
         # Terminal input bar — lets user type and send to running process stdin
         input_frame = ctk.CTkFrame(tf, fg_color=C["obsidian"], height=32, corner_radius=0)
         input_frame.grid(row=2, column=0, sticky="ew")
-        ctk.CTkLabel(input_frame, text="$", font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+        ctk.CTkLabel(input_frame, text="$", font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["neon_green"], width=20).pack(side="left", padx=(8, 4))
-        self.term_input = ctk.CTkEntry(input_frame, font=ctk.CTkFont(family="Consolas", size=12),
+        self.term_input = ctk.CTkEntry(input_frame, font=ctk.CTkFont(family="Consolas", size=13),
             fg_color=C["terminal"], text_color=C["term_text"], border_color=C["border"],
             border_width=1, corner_radius=3, placeholder_text="Type here... (Enter to send)")
         self.term_input.pack(side="left", fill="x", expand=True, padx=(0, 4), pady=4)
         self.term_input.bind("<Return>", self._send_terminal_input)
         ctk.CTkButton(input_frame, text="SEND", width=50, height=24,
-            font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             fg_color=C["neon_green"], text_color=C["obsidian"], hover_color=C["neon_cyan"],
             corner_radius=3, command=lambda: self._send_terminal_input(None)).pack(side="right", padx=6, pady=4)
 
@@ -752,23 +801,23 @@ class GhostStrikeApp(ctk.CTk):
 
     def _add_section_header(self, text):
         ctk.CTkLabel(self.category_scroll, text=f"  {text}",
-                     font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+                     font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                      text_color=C["neon_amber"], anchor="w").pack(fill="x", padx=4, pady=(8, 2))
 
     def _add_category_header(self, name, color, count):
         h = ctk.CTkFrame(self.category_scroll, fg_color="transparent")
         h.pack(fill="x", padx=4, pady=(10, 2))
-        ctk.CTkLabel(h, text="\u25c6", font=ctk.CTkFont(size=10), text_color=color, width=18).pack(side="left")
+        ctk.CTkLabel(h, text="\u25c6", font=ctk.CTkFont(size=12), text_color=color, width=18).pack(side="left")
         ctk.CTkLabel(h, text=name.upper(),
-                     font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+                     font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                      text_color="#94a3b8").pack(side="left")
         ctk.CTkLabel(h, text=f"[{count}]",
-                     font=ctk.CTkFont(family="Consolas", size=8),
+                     font=ctk.CTkFont(family="Consolas", size=12),
                      text_color=C["text_ghost"]).pack(side="left", padx=4)
 
     def _add_script_button(self, script, color):
         btn = ctk.CTkButton(self.category_scroll, text=f"  {script['name']}",
-            font=ctk.CTkFont(family="Consolas", size=10),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color="transparent", hover_color=C["selected"],
             text_color="#b0b8cc", anchor="w", height=26, corner_radius=3, border_width=0,
             command=lambda s=script, c=color: self._select_script(s, c))
@@ -790,7 +839,7 @@ class GhostStrikeApp(ctk.CTk):
         self.quality_badge.pack(side="left", padx=3)
         self.quality_badge.configure(text=f" {ql} ", text_color=qc, fg_color=C["card"])
 
-        trust = TRUST_REGISTRY.get(script["filename"], "VALIDATION")
+        trust = get_trust_level(script)
         tc = TRUST_COLORS.get(trust, C["neon_amber"])
         self.trust_badge.pack(side="left", padx=3)
         self.trust_badge.configure(text=f" {TRUST_DISPLAY.get(trust, trust)} ", text_color=tc, fg_color=C["card"])
@@ -823,13 +872,13 @@ class GhostStrikeApp(ctk.CTk):
         params = script.get("params", [])
         if not params:
             ctk.CTkLabel(self.params_container, text="// No parameters required",
-                         font=ctk.CTkFont(family="Consolas", size=10),
+                         font=ctk.CTkFont(family="Consolas", size=12),
                          text_color=C["text_ghost"]).grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=4)
             self._add_extra_args_row(1)
             return
 
         entry_cfg = dict(height=28, corner_radius=3, fg_color=C["void"], border_color=C["border"],
-                         font=ctk.CTkFont(family="Consolas", size=10))
+                         font=ctk.CTkFont(family="Consolas", size=12))
         for i, p in enumerate(params):
             name = p.get("name", f"arg{i}")
             ptype = p.get("type", "text")
@@ -838,7 +887,7 @@ class GhostStrikeApp(ctk.CTk):
             hlp = p.get("help", "")
 
             ctk.CTkLabel(self.params_container, text=f"{'*' if req else ' '} {name}",
-                         font=ctk.CTkFont(family="Consolas", size=9, weight="bold" if req else "normal"),
+                         font=ctk.CTkFont(family="Consolas", size=13, weight="bold" if req else "normal"),
                          text_color=C["text"] if req else C["text_dim"]
                          ).grid(row=i, column=0, sticky="w", padx=(4, 8), pady=2)
 
@@ -850,7 +899,7 @@ class GhostStrikeApp(ctk.CTk):
                 w.set(opts[0])
             elif ptype == "flag":
                 w = ctk.CTkCheckBox(self.params_container, text=hlp or name,
-                    font=ctk.CTkFont(family="Consolas", size=9), text_color=C["text_dim"],
+                    font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text_dim"],
                     fg_color=C["neon_purple"], hover_color=C["neon_violet"])
             else:
                 w = ctk.CTkEntry(self.params_container, placeholder_text=hlp or f"Enter {name}...", **entry_cfg)
@@ -861,12 +910,12 @@ class GhostStrikeApp(ctk.CTk):
     def _add_extra_args_row(self, row):
         eh = self.selected_script.get("extra_args_help", "") if self.selected_script else ""
         ctk.CTkLabel(self.params_container, text="  extra",
-                     font=ctk.CTkFont(family="Consolas", size=9),
+                     font=ctk.CTkFont(family="Consolas", size=13),
                      text_color=C["text_ghost"]).grid(row=row, column=0, sticky="w", padx=(4, 8), pady=2)
         e = ctk.CTkEntry(self.params_container, height=28, corner_radius=3,
             fg_color=C["void"], border_color=C["border"],
             placeholder_text=eh or "Additional arguments...",
-            font=ctk.CTkFont(family="Consolas", size=10))
+            font=ctk.CTkFont(family="Consolas", size=12))
         e.grid(row=row, column=1, sticky="ew", padx=(0, 4), pady=2)
         self.param_widgets.append({"name": "extra_args", "type": "extra", "required": False, "widget": e, "options": []})
 
@@ -944,6 +993,14 @@ class GhostStrikeApp(ctk.CTk):
             eid = eng.get("id", self.active_engagement)
             env_val = eng.get("environment", "lab")
             env_prefix = f'export GS_ENGAGEMENT_ID="{eid}"; export GS_ENVIRONMENT="{env_val}"; '
+            scope_file = (eng.get("scope_file") or "").strip()
+            if scope_file:
+                # scope_file is captured from a Windows file-picker in _new_engagement_dialog;
+                # convert to a WSL/POSIX path so lib/scope_check.py (invoked from bash) can
+                # actually open it, the same way the script path itself is converted below.
+                scope_wsl = re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}",
+                                    scope_file.replace("\\", "/"))
+                env_prefix += f'export GS_SCOPE_FILE="{scope_wsl}"; '
         try:
             r = subprocess.run(["wsl", "--status"], capture_output=True, timeout=5)
             if r.returncode == 0:
@@ -1098,7 +1155,7 @@ class GhostStrikeApp(ctk.CTk):
 
     def _policy_gate(self, script, cmd_args):
         """Styled policy gate modal. Returns True if operator confirms authorization."""
-        trust = TRUST_REGISTRY.get(script["filename"], "VALIDATION")
+        trust = get_trust_level(script)
         tc = TRUST_COLORS.get(trust, C["neon_amber"])
         td = TRUST_DISPLAY.get(trust, trust)
 
@@ -1115,7 +1172,7 @@ class GhostStrikeApp(ctk.CTk):
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         ctk.CTkLabel(hdr, text="⚑  GHOSTSTRIKE POLICY GATE",
-            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
             text_color=C["neon_red"]).pack(pady=14)
 
         body = ctk.CTkFrame(dlg, fg_color="transparent")
@@ -1126,9 +1183,9 @@ class GhostStrikeApp(ctk.CTk):
             f.pack(fill="x", pady=3)
             f.pack_propagate(False)
             ctk.CTkLabel(f, text=f"  {lbl}", width=160, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=10), text_color=C["text_dim"]).pack(side="left")
+                font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_dim"]).pack(side="left")
             ctk.CTkLabel(f, text=val, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=vc).pack(side="left", padx=8)
 
         row("Module", script["filename"])
@@ -1141,19 +1198,19 @@ class GhostStrikeApp(ctk.CTk):
             warn = ctk.CTkFrame(body, fg_color="#1a0505", corner_radius=4, border_width=1, border_color=C["neon_red"])
             warn.pack(fill="x", pady=(8,4))
             ctk.CTkLabel(warn, text="☠  LAB_ONLY — This module is destructive. Run only in an isolated lab environment.",
-                font=ctk.CTkFont(family="Consolas", size=9), text_color=C["neon_red"],
+                font=ctk.CTkFont(family="Consolas", size=13), text_color=C["neon_red"],
                 wraplength=500).pack(padx=10, pady=8)
         elif trust == "HIGH_IMPACT":
             warn = ctk.CTkFrame(body, fg_color="#1a0e00", corner_radius=4, border_width=1, border_color=C["neon_amber"])
             warn.pack(fill="x", pady=(8,4))
             ctk.CTkLabel(warn, text="⚠  HIGH_IMPACT — Active exploitation. Written authorization required before proceeding.",
-                font=ctk.CTkFont(family="Consolas", size=9), text_color=C["neon_amber"],
+                font=ctk.CTkFont(family="Consolas", size=13), text_color=C["neon_amber"],
                 wraplength=500).pack(padx=10, pady=8)
 
         confirm_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(body, text="I have explicit written authorization to engage this target",
             variable=confirm_var,
-            font=ctk.CTkFont(family="Consolas", size=9), text_color=C["text_dim"],
+            font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text_dim"],
             fg_color=C["neon_purple"], hover_color=C["neon_violet"]).pack(anchor="w", pady=(10,4))
 
         bf = ctk.CTkFrame(body, fg_color="transparent")
@@ -1168,11 +1225,11 @@ class GhostStrikeApp(ctk.CTk):
             dlg.destroy()
 
         ctk.CTkButton(bf, text="▶  EXECUTE MODULE",
-            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             fg_color=C["neon_green"], hover_color="#16a34a", text_color="#000",
             height=36, width=180, corner_radius=5, command=_proceed).pack(side="left", padx=(0,8))
         ctk.CTkButton(bf, text="■  ABORT",
-            font=ctk.CTkFont(family="Consolas", size=11),
+            font=ctk.CTkFont(family="Consolas", size=13),
             fg_color=C["card"], hover_color=C["hover"], border_width=1, border_color=C["border"],
             height=36, width=100, corner_radius=5,
             command=dlg.destroy).pack(side="left")
@@ -1299,17 +1356,17 @@ class GhostStrikeApp(ctk.CTk):
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         ctk.CTkLabel(hdr, text=f"◈  FINDINGS — {module_label}  [{len(findings)} results]",
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["neon_purple"]).pack(side="left", padx=16, pady=12)
         ctk.CTkLabel(hdr, text="click any row for details",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_ghost"]).pack(side="left", padx=4)
 
         if not findings:
             msg = f"No findings for [{module_label}] yet.\nRun the module first to populate findings." \
                   if active_module else "No findings recorded yet.\nRun a module to populate findings."
             ctk.CTkLabel(win, text=msg,
-                font=ctk.CTkFont(family="Consolas", size=12),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"]).pack(expand=True)
             return
 
@@ -1325,7 +1382,7 @@ class GhostStrikeApp(ctk.CTk):
         hf.pack(fill="x", pady=(0,4))
         for txt, w in cols:
             ctk.CTkLabel(hf, text=txt, width=w, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=C["text_ghost"]).pack(side="left", padx=6)
 
         SEV_ORDER = {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"LOW":3,"INFO":4}
@@ -1380,14 +1437,14 @@ class GhostStrikeApp(ctk.CTk):
                 rf = ctk.CTkFrame(sf2, fg_color=C["card"], corner_radius=4)
                 rf.pack(fill="x", pady=2)
                 ctk.CTkLabel(rf, text=label, width=110, anchor="nw",
-                    font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+                    font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                     text_color=C["text_ghost"]).pack(side="left", padx=8, pady=6)
                 ctk.CTkLabel(rf, text=str(value), anchor="nw", wraplength=480,
-                    font=ctk.CTkFont(family="Consolas", size=9),
+                    font=ctk.CTkFont(family="Consolas", size=13),
                     text_color=color).pack(side="left", padx=4, pady=6, fill="x", expand=True)
                 if copy_text:
                     btn = ctk.CTkButton(rf, text="COPY", width=55, height=22,
-                        font=ctk.CTkFont(family="Consolas", size=8),
+                        font=ctk.CTkFont(family="Consolas", size=12),
                         fg_color="transparent", hover_color=C["slate"],
                         border_width=1, border_color=C["border"],
                         text_color=C["text_ghost"], corner_radius=3)
@@ -1401,25 +1458,25 @@ class GhostStrikeApp(ctk.CTk):
             row.pack(fill="x", pady=2)
             row.pack_propagate(False)
             ctk.CTkLabel(row, text=sev, width=80, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                 text_color=sc).pack(side="left", padx=6)
             ctk.CTkLabel(row, text=fd.get("title","?")[:42], width=250, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text"]).pack(side="left")
             cve = fd.get("cve","") or ""
             ctk.CTkLabel(row, text=cve[:20], width=130, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["neon_amber"] if cve and cve != "N/A" else C["text_dim"]).pack(side="left")
             exploit = fd.get("exploit","") or ""
             ctk.CTkLabel(row, text=(exploit[:36] if exploit and exploit != "N/A" else "—"), width=250, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["neon_green"] if exploit and exploit != "N/A" else C["text_dim"]).pack(side="left")
             mitre = fd.get("mitre_attack",{}).get("technique_id","") or ""
             ctk.CTkLabel(row, text=mitre, width=80, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["neon_purple"]).pack(side="left")
             ctk.CTkLabel(row, text=fd.get("module","")[:20], width=120, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"]).pack(side="left")
             # Click any part of the row to see full detail
             _fd = fd
@@ -1516,7 +1573,7 @@ class GhostStrikeApp(ctk.CTk):
             font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
             text_color=C["neon_green"]).pack(side="left", padx=16, pady=12)
         ctk.CTkLabel(hdr, text="Select a pentest type to start",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_ghost"]).pack(side="left", padx=4)
 
         content = ctk.CTkFrame(win, fg_color="transparent")
@@ -1531,7 +1588,7 @@ class GhostStrikeApp(ctk.CTk):
         type_frame = ctk.CTkFrame(content, fg_color=C["card"], corner_radius=6)
         type_frame.pack(fill="x", pady=(0, 8))
         ctk.CTkLabel(type_frame, text="SELECT PENTEST TYPE:",
-            font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color=C["neon_purple"]).pack(anchor="w", padx=12, pady=(10, 6))
 
         btn_frame = ctk.CTkFrame(type_frame, fg_color="transparent")
@@ -1546,7 +1603,7 @@ class GhostStrikeApp(ctk.CTk):
         ]
         for label, key, color in types:
             ctk.CTkButton(btn_frame, text=label, width=95, height=32,
-                font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                 fg_color="transparent", hover_color=C["hover"],
                 border_width=2, border_color=color, text_color=color,
                 corner_radius=4,
@@ -1623,11 +1680,11 @@ class GhostStrikeApp(ctk.CTk):
         prog_hdr = ctk.CTkFrame(prog_frame, fg_color="transparent")
         prog_hdr.pack(fill="x", padx=8, pady=(6, 2))
         ctk.CTkLabel(prog_hdr, text=f"  {pentest_type.upper()} PENTEST  --  {done_count}/{total} steps ({pct}%)",
-            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["neon_green"] if all_done else C["neon_amber"]).pack(side="left")
         # Refresh button
         ctk.CTkButton(prog_hdr, text="REFRESH", width=70, height=22,
-            font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             fg_color=C["slate"], hover_color=C["hover"], text_color=C["neon_cyan"],
             corner_radius=3, command=lambda: self._load_roadmap_steps(pentest_type)).pack(side="right", padx=4)
         pbar = ctk.CTkProgressBar(prog_frame, height=10, corner_radius=4,
@@ -1637,7 +1694,7 @@ class GhostStrikeApp(ctk.CTk):
 
         if all_done:
             ctk.CTkLabel(prog_frame, text="ALL STEPS COMPLETE! Generate your report.",
-                font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=C["neon_green"]).pack(pady=(0, 6))
 
         # Severity color map
@@ -1674,12 +1731,12 @@ class GhostStrikeApp(ctk.CTk):
             badge_color = C["neon_green"] if is_done else (C["neon_amber"] if is_current else C["text_ghost"])
             badge_text = "✓" if is_done else str(i)
             ctk.CTkLabel(hdr_row, text=badge_text, width=24, height=24,
-                font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=C["obsidian"], fg_color=badge_color,
                 corner_radius=12).pack(side="left", padx=(0, 6))
 
             ctk.CTkLabel(hdr_row, text=name,
-                font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=C["text"]).pack(side="left")
 
             # Status + findings count on right
@@ -1688,13 +1745,13 @@ class GhostStrikeApp(ctk.CTk):
 
             if finding_count > 0:
                 ctk.CTkLabel(status_frame, text=f"{finding_count} findings",
-                    font=ctk.CTkFont(family="Consolas", size=8),
+                    font=ctk.CTkFont(family="Consolas", size=12),
                     text_color=C["neon_purple"]).pack(side="left", padx=(0, 8))
 
             status_text = "DONE" if is_done else ("CURRENT" if is_current else "PENDING")
             status_color = C["neon_green"] if is_done else (C["neon_amber"] if is_current else C["text_ghost"])
             ctk.CTkLabel(status_frame, text=status_text,
-                font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=status_color).pack(side="left")
 
             # ── Expandable detail area (shown for current step or when clicked) ──
@@ -1714,7 +1771,7 @@ class GhostStrikeApp(ctk.CTk):
 
             # Description
             ctk.CTkLabel(detail_frame, text=desc,
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"], anchor="w", justify="left").pack(anchor="w", pady=(2, 4))
 
             # Findings preview (if module has findings)
@@ -1723,7 +1780,7 @@ class GhostStrikeApp(ctk.CTk):
                 findings_preview = ctk.CTkFrame(detail_frame, fg_color=C["terminal"], corner_radius=4)
                 findings_preview.pack(fill="x", pady=(2, 4))
                 ctk.CTkLabel(findings_preview, text=f"  FINDINGS ({finding_count}):",
-                    font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+                    font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                     text_color=C["neon_purple"]).pack(anchor="w", padx=6, pady=(4, 2))
                 for fd in findings_list[:6]:  # Show max 6
                     sev = fd.get("severity", "INFO")
@@ -1733,14 +1790,14 @@ class GhostStrikeApp(ctk.CTk):
                     row.pack(fill="x", padx=8)
                     row.pack_propagate(False)
                     ctk.CTkLabel(row, text=sev, width=60,
-                        font=ctk.CTkFont(family="Consolas", size=7, weight="bold"),
+                        font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                         text_color=sc, anchor="w").pack(side="left")
                     ctk.CTkLabel(row, text=title,
-                        font=ctk.CTkFont(family="Consolas", size=7),
+                        font=ctk.CTkFont(family="Consolas", size=12),
                         text_color=C["text_dim"], anchor="w").pack(side="left", fill="x")
                 if finding_count > 6:
                     ctk.CTkLabel(findings_preview, text=f"  ... and {finding_count - 6} more",
-                        font=ctk.CTkFont(family="Consolas", size=7),
+                        font=ctk.CTkFont(family="Consolas", size=12),
                         text_color=C["text_ghost"]).pack(anchor="w", padx=8, pady=(0, 4))
                 ctk.CTkLabel(findings_preview, text="",height=2).pack()  # spacer
 
@@ -1752,24 +1809,24 @@ class GhostStrikeApp(ctk.CTk):
             if script:
                 if is_current:
                     ctk.CTkButton(btn_row, text=">> GO TO MODULE", width=140, height=28,
-                        font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+                        font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                         fg_color=C["neon_green"], text_color=C["obsidian"],
                         hover_color=C["neon_cyan"], corner_radius=4,
                         command=lambda s=script: self._go_to_module(s)).pack(side="left", padx=(0, 4))
                 elif is_done:
                     ctk.CTkButton(btn_row, text="RE-RUN", width=80, height=26,
-                        font=ctk.CTkFont(family="Consolas", size=8),
+                        font=ctk.CTkFont(family="Consolas", size=12),
                         fg_color=C["slate"], text_color=C["text"],
                         hover_color=C["hover"], corner_radius=4,
                         command=lambda s=script: self._go_to_module(s)).pack(side="left", padx=(0, 4))
                     ctk.CTkButton(btn_row, text="VIEW FINDINGS", width=110, height=26,
-                        font=ctk.CTkFont(family="Consolas", size=8),
+                        font=ctk.CTkFont(family="Consolas", size=12),
                         fg_color=C["slate"], text_color=C["neon_purple"],
                         hover_color=C["hover"], corner_radius=4,
                         command=lambda s=script: self._go_to_findings(s)).pack(side="left")
                 else:
                     ctk.CTkLabel(btn_row, text="Complete previous steps first",
-                        font=ctk.CTkFont(family="Consolas", size=8),
+                        font=ctk.CTkFont(family="Consolas", size=12),
                         text_color=C["text_ghost"]).pack(side="left")
 
     def _go_to_module(self, script):
@@ -1943,10 +2000,10 @@ class GhostStrikeApp(ctk.CTk):
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         ctk.CTkLabel(hdr, text=f"ACTIVE SESSIONS  [{len(self._sessions)}]",
-            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
             text_color=C["neon_red"]).pack(side="left", padx=16, pady=12)
         ctk.CTkLabel(hdr, text="click SWITCH to interact, KILL to terminate",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_ghost"]).pack(side="left", padx=4)
 
         sf = ctk.CTkScrollableFrame(win, fg_color="transparent")
@@ -1954,7 +2011,7 @@ class GhostStrikeApp(ctk.CTk):
 
         if not self._sessions:
             ctk.CTkLabel(sf, text="No active sessions.\n\nRun an exploit, get a shell, then click BG to background it.\nThe session stays alive while you run other modules.",
-                font=ctk.CTkFont(family="Consolas", size=11),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"]).pack(expand=True, pady=40)
             return
 
@@ -1963,7 +2020,7 @@ class GhostStrikeApp(ctk.CTk):
         hf.pack(fill="x", pady=(0, 4))
         for txt, w in [("ID", 40), ("TYPE", 180), ("TARGET", 120), ("TIME", 70), ("STATUS", 70), ("ACTIONS", 140)]:
             ctk.CTkLabel(hf, text=txt, width=w, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=C["text_ghost"]).pack(side="left", padx=4)
 
         for sid, sess in self._sessions.items():
@@ -1973,32 +2030,32 @@ class GhostStrikeApp(ctk.CTk):
             row.pack_propagate(False)
 
             ctk.CTkLabel(row, text=str(sid), width=40,
-                font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 text_color=C["neon_red"]).pack(side="left", padx=4)
             ctk.CTkLabel(row, text=sess["name"][:25], width=180,
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text"]).pack(side="left", padx=4)
             ctk.CTkLabel(row, text=sess["target"], width=120,
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["neon_cyan"]).pack(side="left", padx=4)
             ctk.CTkLabel(row, text=sess["time"], width=70,
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"]).pack(side="left", padx=4)
             ctk.CTkLabel(row, text="ALIVE" if alive else "DEAD", width=70,
-                font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
                 text_color=C["neon_green"] if alive else C["neon_red"]).pack(side="left", padx=4)
 
             btn_frame = ctk.CTkFrame(row, fg_color="transparent")
             btn_frame.pack(side="left", padx=4)
             if alive:
                 ctk.CTkButton(btn_frame, text="SWITCH", width=60, height=24,
-                    font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+                    font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                     fg_color=C["neon_green"], text_color=C["obsidian"],
                     hover_color=C["neon_cyan"], corner_radius=3,
                     command=lambda s=sid, w=win: (self._switch_to_session(s), w.destroy())
                 ).pack(side="left", padx=2)
             ctk.CTkButton(btn_frame, text="KILL", width=50, height=24,
-                font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                 fg_color=C["neon_red"], text_color=C["obsidian"],
                 hover_color="#991b1b", corner_radius=3,
                 command=lambda s=sid, w=win, sf2=sf: (self._kill_session(s), w.destroy(), self._show_sessions_panel())
@@ -2061,7 +2118,7 @@ class GhostStrikeApp(ctk.CTk):
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         ctk.CTkLabel(hdr, text="⚑  NEW ENGAGEMENT",
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["neon_green"]).pack(pady=12)
 
         body = ctk.CTkFrame(dlg, fg_color="transparent")
@@ -2075,12 +2132,12 @@ class GhostStrikeApp(ctk.CTk):
             f = ctk.CTkFrame(body, fg_color="transparent")
             f.pack(fill="x", pady=3)
             ctk.CTkLabel(f, text=lbl, width=120, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"]).pack(side="left")
             e = ctk.CTkEntry(f, height=26, corner_radius=3,
                 fg_color=C["void"], border_color=C["border"],
                 placeholder_text=placeholder,
-                font=ctk.CTkFont(family="Consolas", size=10))
+                font=ctk.CTkFont(family="Consolas", size=12))
             if default:
                 e.insert(0, default)
             e.pack(side="left", fill="x", expand=True)
@@ -2094,12 +2151,12 @@ class GhostStrikeApp(ctk.CTk):
         ef = ctk.CTkFrame(body, fg_color="transparent")
         ef.pack(fill="x", pady=3)
         ctk.CTkLabel(ef, text="Environment", width=120, anchor="w",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_dim"]).pack(side="left")
         env_var = ctk.StringVar(value="lab")
         env_cb = ctk.CTkComboBox(ef, values=["lab", "staging", "production"],
             variable=env_var, state="readonly", height=26, width=180,
-            font=ctk.CTkFont(family="Consolas", size=10),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["void"], border_color=C["border"],
             button_color=C["border"], dropdown_fg_color=C["slate"])
         env_cb.pack(side="left")
@@ -2107,16 +2164,16 @@ class GhostStrikeApp(ctk.CTk):
         sf = ctk.CTkFrame(body, fg_color="transparent")
         sf.pack(fill="x", pady=3)
         ctk.CTkLabel(sf, text="Scope File", width=120, anchor="w",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_dim"]).pack(side="left")
         scope_var = ctk.StringVar()
         scope_e = ctk.CTkEntry(sf, textvariable=scope_var, height=26,
             corner_radius=3, fg_color=C["void"], border_color=C["border"],
             placeholder_text="path/to/scope.yml",
-            font=ctk.CTkFont(family="Consolas", size=10))
+            font=ctk.CTkFont(family="Consolas", size=12))
         scope_e.pack(side="left", fill="x", expand=True, padx=(0, 4))
         ctk.CTkButton(sf, text="BROWSE", width=60, height=26,
-            font=ctk.CTkFont(family="Consolas", size=8),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"],
             command=lambda: scope_var.set(
                 filedialog.askopenfilename(filetypes=[("YAML", "*.yml *.yaml"), ("All", "*.*")])
@@ -2143,11 +2200,11 @@ class GhostStrikeApp(ctk.CTk):
         bf = ctk.CTkFrame(body, fg_color="transparent")
         bf.pack(fill="x", pady=(10, 0))
         ctk.CTkButton(bf, text="▶  CREATE ENGAGEMENT",
-            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             fg_color=C["neon_green"], hover_color="#16a34a", text_color="#000",
             height=36, corner_radius=5, command=_create).pack(side="left", padx=(0, 8))
         ctk.CTkButton(bf, text="CANCEL", height=36, width=80,
-            font=ctk.CTkFont(family="Consolas", size=10),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"],
             corner_radius=5, command=dlg.destroy).pack(side="left")
 
@@ -2163,7 +2220,7 @@ class GhostStrikeApp(ctk.CTk):
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         ctk.CTkLabel(hdr, text=f"⚑  ENGAGEMENTS  [{len(engs)} total]",
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["neon_green"]).pack(pady=12)
 
         sf = ctk.CTkScrollableFrame(dlg, fg_color="transparent")
@@ -2171,7 +2228,7 @@ class GhostStrikeApp(ctk.CTk):
 
         if not engs:
             ctk.CTkLabel(sf, text="No engagements yet. Click +NEW to create one.",
-                font=ctk.CTkFont(family="Consolas", size=11),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"]).pack(pady=20)
         else:
             for eid, eng in sorted(engs.items(), key=lambda x: x[1].get("created",""), reverse=True):
@@ -2182,15 +2239,15 @@ class GhostStrikeApp(ctk.CTk):
                 row.pack(fill="x", pady=3)
                 row.pack_propagate(False)
                 ctk.CTkLabel(row, text=f"  ⚑ {eng.get('id', eid)}", anchor="w",
-                    font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+                    font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                     text_color=C["neon_green"] if is_active else C["text"]).pack(side="left")
                 ctk.CTkLabel(row,
                     text=f"  {eng.get('client','?')}  |  {eng.get('environment','?')}  |  {eng.get('modules_run',0)} runs",
-                    font=ctk.CTkFont(family="Consolas", size=8),
+                    font=ctk.CTkFont(family="Consolas", size=12),
                     text_color=C["text_dim"]).pack(side="left")
                 if not is_active:
                     ctk.CTkButton(row, text="ACTIVATE", width=70, height=24,
-                        font=ctk.CTkFont(family="Consolas", size=8),
+                        font=ctk.CTkFont(family="Consolas", size=12),
                         fg_color=C["card"], hover_color=C["hover"],
                         border_width=1, border_color=C["neon_green"],
                         text_color=C["neon_green"],
@@ -2198,11 +2255,11 @@ class GhostStrikeApp(ctk.CTk):
                     ).pack(side="right", padx=8)
                 else:
                     ctk.CTkLabel(row, text="ACTIVE",
-                        font=ctk.CTkFont(family="Consolas", size=8, weight="bold"),
+                        font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
                         text_color=C["neon_green"]).pack(side="right", padx=12)
 
         ctk.CTkButton(dlg, text="+  NEW ENGAGEMENT",
-            font=ctk.CTkFont(family="Consolas", size=10),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"],
             border_width=1, border_color=C["neon_green"], text_color=C["neon_green"],
             height=32, corner_radius=5,
@@ -2225,7 +2282,7 @@ class GhostStrikeApp(ctk.CTk):
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         ctk.CTkLabel(hdr, text="⬛  GENERATE REPORT",
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["neon_amber"]).pack(pady=12)
 
         body = ctk.CTkFrame(dlg, fg_color="transparent")
@@ -2233,12 +2290,12 @@ class GhostStrikeApp(ctk.CTk):
 
         # Template
         ctk.CTkLabel(body, text="Template", anchor="w",
-            font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["text_dim"]).pack(anchor="w")
         tmpl_var = ctk.StringVar(value="Technical Report")
         for t in ["Technical Report", "Executive Summary", "Compliance Report"]:
             ctk.CTkRadioButton(body, text=t, variable=tmpl_var, value=t,
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text"], fg_color=C["neon_amber"],
                 hover_color=C["neon_amber"]).pack(anchor="w", pady=1)
 
@@ -2248,11 +2305,11 @@ class GhostStrikeApp(ctk.CTk):
             f = ctk.CTkFrame(body, fg_color="transparent")
             f.pack(fill="x", pady=2)
             ctk.CTkLabel(f, text=lbl, width=130, anchor="w",
-                font=ctk.CTkFont(family="Consolas", size=9),
+                font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text_dim"]).pack(side="left")
             e = ctk.CTkEntry(f, height=26, corner_radius=3,
                 fg_color=C["void"], border_color=C["border"],
-                font=ctk.CTkFont(family="Consolas", size=10))
+                font=ctk.CTkFont(family="Consolas", size=12))
             if default:
                 e.insert(0, default)
             e.pack(side="left", fill="x", expand=True)
@@ -2263,7 +2320,7 @@ class GhostStrikeApp(ctk.CTk):
         fld_date    = _field("Report Date",    datetime.datetime.now().strftime("%Y-%m-%d"))
 
         ctk.CTkLabel(body, text="Format", anchor="w",
-            font=ctk.CTkFont(family="Consolas", size=9, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["text_dim"]).pack(anchor="w", pady=(8, 2))
         fmt_html = ctk.BooleanVar(value=True)
         fmt_md   = ctk.BooleanVar(value=True)
@@ -2272,27 +2329,27 @@ class GhostStrikeApp(ctk.CTk):
         ff.pack(anchor="w")
         for var, lbl in [(fmt_html, "HTML"), (fmt_md, "Markdown"), (fmt_json, "JSON/SARIF")]:
             ctk.CTkCheckBox(ff, text=lbl, variable=var,
-                font=ctk.CTkFont(family="Consolas", size=9), text_color=C["text"],
+                font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text"],
                 fg_color=C["neon_amber"], hover_color=C["neon_amber"]).pack(side="left", padx=8)
 
         # Output dir
         of = ctk.CTkFrame(body, fg_color="transparent")
         of.pack(fill="x", pady=6)
         ctk.CTkLabel(of, text="Output Directory", width=130, anchor="w",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_dim"]).pack(side="left")
         outdir_var = ctk.StringVar(value=str(Path.home() / "GhostStrike-Reports"))
         ctk.CTkEntry(of, textvariable=outdir_var, height=26, corner_radius=3,
             fg_color=C["void"], border_color=C["border"],
-            font=ctk.CTkFont(family="Consolas", size=10)).pack(side="left", fill="x", expand=True, padx=(0,4))
+            font=ctk.CTkFont(family="Consolas", size=12)).pack(side="left", fill="x", expand=True, padx=(0,4))
         ctk.CTkButton(of, text="BROWSE", width=60, height=26,
-            font=ctk.CTkFont(family="Consolas", size=8),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"],
             command=lambda: outdir_var.set(
                 filedialog.askdirectory() or outdir_var.get())).pack(side="left")
 
         status_lbl = ctk.CTkLabel(body, text="",
-            font=ctk.CTkFont(family="Consolas", size=9), text_color=C["text_dim"])
+            font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text_dim"])
         status_lbl.pack(anchor="w", pady=4)
 
         def _do_generate():
@@ -2333,11 +2390,11 @@ class GhostStrikeApp(ctk.CTk):
         bf = ctk.CTkFrame(body, fg_color="transparent")
         bf.pack(fill="x", pady=(6, 0))
         ctk.CTkButton(bf, text="⬛  GENERATE",
-            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             fg_color=C["neon_amber"], hover_color="#d97706", text_color="#000",
             height=36, corner_radius=5, command=_do_generate).pack(side="left", padx=(0, 8))
         ctk.CTkButton(bf, text="CLOSE", height=36, width=70,
-            font=ctk.CTkFont(family="Consolas", size=10),
+            font=ctk.CTkFont(family="Consolas", size=12),
             fg_color=C["card"], hover_color=C["hover"],
             corner_radius=5, command=dlg.destroy).pack(side="left")
 
@@ -2364,10 +2421,10 @@ class GhostStrikeApp(ctk.CTk):
                            border_width=1, border_color=clr)
         tf.pack(padx=2, pady=2)
         ctk.CTkLabel(tf, text=title,
-            font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color=clr).pack(padx=14, pady=(8, 2), anchor="w")
         ctk.CTkLabel(tf, text=message[:72],
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_dim"], wraplength=300).pack(padx=14, pady=(0, 8), anchor="w")
 
         toast.update_idletasks()
@@ -2415,37 +2472,37 @@ class GhostStrikeApp(ctk.CTk):
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         ctk.CTkLabel(hdr, text="⚙  SETTINGS",
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["text"]).pack(pady=12)
 
         body = ctk.CTkFrame(dlg, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=22, pady=14)
 
         ctk.CTkLabel(body, text="Webhook URL (Slack / Teams / Discord)",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_dim"]).pack(anchor="w")
         wh_entry = ctk.CTkEntry(body, height=28, corner_radius=3,
             fg_color=C["void"], border_color=C["border"],
             placeholder_text="https://hooks.slack.com/...",
-            font=ctk.CTkFont(family="Consolas", size=10))
+            font=ctk.CTkFont(family="Consolas", size=12))
         wh_entry.pack(fill="x", pady=(2, 8))
         if self.settings.get("webhook_url"):
             wh_entry.insert(0, self.settings["webhook_url"])
 
         ctk.CTkLabel(body, text="Send notifications for:",
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_dim"]).pack(anchor="w")
         nc_var = ctk.BooleanVar(value=self.settings.get("notify_complete", True))
         nf_var = ctk.BooleanVar(value=self.settings.get("notify_critical", True))
         ctk.CTkCheckBox(body, text="Module complete", variable=nc_var,
-            font=ctk.CTkFont(family="Consolas", size=9), text_color=C["text"],
+            font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text"],
             fg_color=C["neon_cyan"], hover_color=C["neon_cyan"]).pack(anchor="w", pady=2)
         ctk.CTkCheckBox(body, text="Critical/High findings detected", variable=nf_var,
-            font=ctk.CTkFont(family="Consolas", size=9), text_color=C["text"],
+            font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text"],
             fg_color=C["neon_red"], hover_color=C["neon_red"]).pack(anchor="w", pady=2)
 
         test_lbl = ctk.CTkLabel(body, text="",
-            font=ctk.CTkFont(family="Consolas", size=9), text_color=C["text_dim"])
+            font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text_dim"])
         test_lbl.pack(anchor="w", pady=4)
 
         def _test_webhook():
@@ -2474,16 +2531,16 @@ class GhostStrikeApp(ctk.CTk):
         bf = ctk.CTkFrame(body, fg_color="transparent")
         bf.pack(fill="x", pady=(8, 0))
         ctk.CTkButton(bf, text="SAVE", height=32, width=80,
-            font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             fg_color=C["neon_cyan"], hover_color="#0891b2", text_color="#000",
             corner_radius=5, command=_save).pack(side="left", padx=(0, 8))
         ctk.CTkButton(bf, text="TEST WEBHOOK", height=32, width=120,
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             fg_color=C["card"], hover_color=C["hover"],
             border_width=1, border_color=C["border"],
             corner_radius=5, command=_test_webhook).pack(side="left", padx=(0, 8))
         ctk.CTkButton(bf, text="CANCEL", height=32, width=70,
-            font=ctk.CTkFont(family="Consolas", size=9),
+            font=ctk.CTkFont(family="Consolas", size=13),
             fg_color=C["card"], hover_color=C["hover"],
             corner_radius=5, command=dlg.destroy).pack(side="left")
 
@@ -2520,6 +2577,12 @@ class GhostStrikeApp(ctk.CTk):
                     self.current_process.stdin.flush()
             except (BrokenPipeError, OSError):
                 self._append_terminal(f"  [!] Process not accepting input\n")
+        elif self.ai_mode:
+            if self._ai_running:
+                self._append_terminal("  [!] AI agent is still working — wait for it to finish.\n")
+                return
+            self._append_terminal(f"\n  \U0001f916 {text}\n")
+            threading.Thread(target=self._run_ai_agent, args=(text,), daemon=True).start()
         else:
             # No script running — act as a real shell
             self._append_terminal(f"  $ {text}\n")
@@ -2549,6 +2612,178 @@ class GhostStrikeApp(ctk.CTk):
         finally:
             self.current_process = None
 
+    # ══════════════════════════════════════════
+    # AI Co-Pilot
+    # ══════════════════════════════════════════
+
+    def _toggle_ai_mode(self):
+        if not _AI_ENGINE_AVAILABLE:
+            return
+        self.ai_mode = not self.ai_mode
+        if self.ai_mode:
+            self._ai_mode_btn.configure(text="\U0001f916 AI CO-PILOT",
+                border_color=C["neon_purple"], text_color=C["neon_purple"])
+            self._ai_agent_cb.configure(state="readonly")
+            try:
+                self.term_input.configure(
+                    placeholder_text="Describe the task for the AI agent... (Enter to send)")
+            except Exception:
+                pass
+            self._append_terminal(
+                f"\n  \U0001f916 AI CO-PILOT ENABLED — agent: {self.ai_agent_name}\n"
+                f"  Every module call the agent makes still passes through the same "
+                f"policy/trust/scope gate as a manual run. Modules without confirmed "
+                f"gs_policy_gate wiring are refused, not attempted.\n"
+            )
+            self._ensure_vault_key(prompt_if_missing=True)
+        else:
+            self._ai_mode_btn.configure(text="\U0001f916 MANUAL",
+                border_color=C["text_dim"], text_color=C["text_dim"])
+            self._ai_agent_cb.configure(state="disabled")
+            try:
+                self.term_input.configure(placeholder_text="Type here... (Enter to send)")
+            except Exception:
+                pass
+            self._append_terminal("\n  \U0001f916 AI CO-PILOT DISABLED — back to manual mode.\n")
+
+    def _ensure_vault_key(self, prompt_if_missing: bool = False) -> bool:
+        """
+        Make sure a vault master key is cached for this session so
+        GhostStrikeModelProvider can resolve an API key from lib/vault.sh.
+        Returns True if a key is cached (or the operator explicitly chose to
+        rely on the ANTHROPIC_API_KEY/OPENAI_API_KEY env var fallback instead).
+        """
+        if self.vault_master_key is not None:
+            return True
+        if not prompt_if_missing:
+            return False
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("GhostStrike — Vault Unlock")
+        dlg.geometry("440x220")
+        dlg.configure(fg_color=C["obsidian"])
+        dlg.resizable(False, False)
+        dlg.after(100, lambda w=dlg: (w.update_idletasks(), w.lift(), w.focus_force(), w.grab_set()))
+
+        ctk.CTkLabel(dlg, text="⚡  Vault Master Password",
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+            text_color=C["neon_purple"]).pack(pady=(16, 4))
+        ctk.CTkLabel(dlg,
+            text="Unlocks lib/vault.sh to fetch the LLM API key.\n"
+                 "Leave blank to use ANTHROPIC_API_KEY / OPENAI_API_KEY instead.\n"
+                 "Never written to disk — held in memory for this session only.",
+            font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text_dim"],
+            justify="left").pack(pady=(0, 10), padx=16)
+
+        pw_var = ctk.StringVar()
+        entry = ctk.CTkEntry(dlg, textvariable=pw_var, show="*", width=380, height=30,
+            fg_color=C["void"], border_color=C["border"],
+            font=ctk.CTkFont(family="Consolas", size=13))
+        entry.pack(padx=16)
+        entry.focus_set()
+
+        result = {"key": ""}
+
+        def _submit(_e=None):
+            result["key"] = pw_var.get()
+            dlg.destroy()
+
+        entry.bind("<Return>", _submit)
+        bf = ctk.CTkFrame(dlg, fg_color="transparent")
+        bf.pack(pady=16)
+        ctk.CTkButton(bf, text="UNLOCK", width=110, height=30,
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            fg_color=C["neon_purple"], hover_color=C["neon_violet"],
+            command=_submit).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(bf, text="USE ENV VAR", width=110, height=30,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=C["card"], hover_color=C["hover"],
+            command=lambda: (pw_var.set(""), _submit())).pack(side="left")
+
+        dlg.wait_window()
+        self.vault_master_key = result["key"] or ""  # "" means "use env var fallback"
+        return True
+
+    def _run_ai_agent(self, prompt: str):
+        if not _AI_ENGINE_AVAILABLE:
+            self._append_terminal("  [!] ai_engine is not available.\n")
+            return
+
+        self._ai_running = True
+        self.status_dot.configure(text_color=C["neon_purple"])
+        self.status_label.configure(text="AI THINKING...", text_color=C["neon_purple"])
+
+        # Export engagement context onto THIS process's environment so that
+        # GhostStrikeRunner's fallback command builder -- which is what every
+        # agent actually gets, since each agent constructs its own runner
+        # internally with no hook to inject the GUI's _build_shell_command --
+        # can re-export it across the WSL boundary. This is what makes an
+        # AI-initiated module call carry the same authorization context
+        # (GS_ENGAGEMENT_ID / GS_ENVIRONMENT / GS_SCOPE_FILE) as a manual run.
+        if self.active_engagement:
+            eng = self._eng_raw.get("engagements", {}).get(self.active_engagement, {})
+            os.environ["GS_ENGAGEMENT_ID"] = eng.get("id", self.active_engagement)
+            os.environ["GS_ENVIRONMENT"] = eng.get("environment", "lab")
+            scope_file = (eng.get("scope_file") or "").strip()
+            if scope_file:
+                os.environ["GS_SCOPE_FILE"] = scope_file
+            else:
+                os.environ.pop("GS_SCOPE_FILE", None)
+        else:
+            os.environ.pop("GS_ENGAGEMENT_ID", None)
+            os.environ["GS_ENVIRONMENT"] = "lab"
+            os.environ.pop("GS_SCOPE_FILE", None)
+
+        try:
+            agent_cls = AGENT_REGISTRY.get(self.ai_agent_name)
+            if not agent_cls:
+                self._append_terminal(f"  [!] Unknown agent '{self.ai_agent_name}'.\n")
+                return
+
+            try:
+                backend = ModelBackend(self.ai_backend)
+            except ValueError:
+                backend = ModelBackend.CLAUDE
+
+            try:
+                provider = GhostStrikeModelProvider(
+                    backend=backend, vault_master_key=self.vault_master_key or None,
+                )
+            except RuntimeError as exc:
+                self._append_terminal(
+                    f"  [!] Could not start AI agent: {exc}\n"
+                    f"  Set up a key via the vault (lib/vault.sh gs_vault_store) or the "
+                    f"ANTHROPIC_API_KEY / OPENAI_API_KEY environment variable.\n"
+                )
+                return
+
+            agent = agent_cls(
+                model_provider=provider,
+                output_callback=self._append_terminal,
+                max_iterations=30,
+                engagement_id=self.active_engagement or "",
+            )
+
+            self._append_terminal(f"  [key source: {provider.key_source}]\n")
+            result = agent.run(prompt)
+
+            self._append_terminal(
+                f"\n  {'=' * 56}\n"
+                f"  AGENT RESULT — {result.agent_name}\n"
+                f"  Iterations: {result.iterations}   Success: {result.success}\n"
+                f"  {'=' * 56}\n"
+            )
+            if result.error:
+                self._append_terminal(f"  Error: {result.error}\n")
+            self._append_evidence_summary()
+
+        except Exception as exc:
+            self._append_terminal(f"  [!] AI agent crashed: {exc}\n")
+        finally:
+            self._ai_running = False
+            self.status_dot.configure(text_color=C["neon_green"])
+            self.status_label.configure(text="STANDBY", text_color=C["neon_green"])
+
     def _append_terminal(self, text):
         text = re.sub(r'\x1b\[[0-9;]*[mKHFABCDJsu]|\x1b\[[0-9;]*m|\x0f|\x1b\(B', '', text)
         def _u():
@@ -2560,8 +2795,7 @@ class GhostStrikeApp(ctk.CTk):
         # Scan for critical findings during live execution
         if self.current_process and re.search(
                 r'\b(CRITICAL|VULNERABLE|EXPLOIT|PWNED|ROOTED)\b', text, re.I):
-            trust = TRUST_REGISTRY.get(
-                self.selected_script["filename"] if self.selected_script else "", "VALIDATION")
+            trust = get_trust_level(self.selected_script)
             if trust in ("HIGH_IMPACT", "LAB_ONLY"):
                 self.after(100, lambda t=text: self._notify(
                     "⚠ Finding Detected", t.strip()[:80], "critical"))
@@ -2603,7 +2837,7 @@ class GhostStrikeApp(ctk.CTk):
         win.title(f"// SOURCE: {self.selected_script['filename']}")
         win.geometry("1050x720")
         win.after(100, lambda w=win: (w.update_idletasks(), w.lift(), w.focus_force(), w.grab_set()))
-        tb = ctk.CTkTextbox(win, font=ctk.CTkFont(family="Consolas", size=12),
+        tb = ctk.CTkTextbox(win, font=ctk.CTkFont(family="Consolas", size=13),
             fg_color=C["terminal"], text_color=C["term_text"], wrap="none")
         tb.pack(fill="both", expand=True, padx=8, pady=8)
         tb.insert("1.0", content); tb.configure(state="disabled")
@@ -2615,12 +2849,12 @@ class GhostStrikeApp(ctk.CTk):
         win.title(f"// DOCS: {s['name']}")
         win.geometry("850x680")
         win.after(100, lambda w=win: (w.update_idletasks(), w.lift(), w.focus_force(), w.grab_set()))
-        tb = ctk.CTkTextbox(win, font=ctk.CTkFont(family="Consolas", size=12),
+        tb = ctk.CTkTextbox(win, font=ctk.CTkFont(family="Consolas", size=13),
             fg_color=C["terminal"], text_color=C["text"], wrap="word")
         tb.pack(fill="both", expand=True, padx=8, pady=8)
 
         ql = {GOOD:"ARMED",PARTIAL:"PARTIAL",NEEDS_WORK:"STUB"}.get(s.get("quality"), "?")
-        trust = TRUST_REGISTRY.get(s["filename"], "VALIDATION")
+        trust = get_trust_level(s)
         td = TRUST_DISPLAY.get(trust, trust)
         doc = [f"{'='*60}", f"  {s['name']}", f"  {s['filename']}", f"{'='*60}", "",
                f"  STATUS:      {ql}", f"  CATEGORY:    {s.get('category','?')}",

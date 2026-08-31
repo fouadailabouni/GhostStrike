@@ -11,7 +11,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-FRAMEWORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bash scripts for pentest"
+FRAMEWORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bash_scripts_for_pentest"
 PASS=0
 FAIL=0
 ERRORS=()

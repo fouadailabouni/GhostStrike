@@ -9,7 +9,7 @@ def main():
     app_dir = os.path.dirname(os.path.abspath(__file__))
     main_script = os.path.join(app_dir, "ghoststrike.py")
     metadata_script = os.path.join(app_dir, "script_metadata.py")
-    scripts_dir = os.path.join(app_dir, "..", "bash scripts for pentest")
+    scripts_dir = os.path.join(app_dir, "..", "bash_scripts_for_pentest")
 
     print("[*] Installing dependencies...")
     subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=app_dir, check=True)
@@ -21,7 +21,7 @@ def main():
         "--onefile",
         "--windowed",
         "--icon", "NONE",
-        "--add-data", f"{scripts_dir};bash scripts for pentest",
+        "--add-data", f"{scripts_dir};bash_scripts_for_pentest",
         "--add-data", f"{metadata_script};.",
         "--hidden-import", "customtkinter",
         "--collect-all", "customtkinter",

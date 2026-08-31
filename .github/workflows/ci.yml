@@ -1,0 +1,95 @@
+name: CI - GhostStrike Pentest Framework
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint Scripts
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y shellcheck jq
+
+    - name: Syntax check (bash -n) on every script
+      run: |
+        status=0
+        while IFS= read -r -d '' f; do
+          bash -n "$f" || status=1
+        done < <(find bash_scripts_for_pentest -name "*.sh" -not -path "*/pentest_lab/*" -print0)
+        exit $status
+
+    - name: ShellCheck (error severity only -- style/info-level findings are not yet triaged)
+      run: |
+        find bash_scripts_for_pentest -name "*.sh" -not -path "*/pentest_lab/*" -print0 \
+          | xargs -0 shellcheck -S error
+
+    - name: Check for hardcoded secret literals
+      run: |
+        # Matches VAR="literal", not VAR="$other_var" -- the naive version of
+        # this check (no assignment requirement) used to flag nearly every
+        # file, since a pentest tool legitimately has "password"/"token" in
+        # flag names and its own attack payloads constantly.
+        if grep -r -i -E "(password|passwd|secret|token|api_key)\s*=\s*['\"][^'\"\$][^'\"]*['\"]" \
+            --include="*.sh" bash_scripts_for_pentest | grep -v -i "AUTHORIZATION DISCLAIMER"; then
+          echo "Potential hardcoded secret literal found"
+          exit 1
+        fi
+
+    - name: Validate JSON schemas
+      run: |
+        status=0
+        while IFS= read -r -d '' f; do
+          jq . "$f" >/dev/null 2>&1 || { echo "Invalid JSON: $f"; status=1; }
+        done < <(find bash_scripts_for_pentest -name "*.json" -print0)
+        exit $status
+
+  test:
+    runs-on: ubuntu-latest
+    name: Run Tests
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install test dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bats jq python3-yaml
+
+    - name: Run BATS tests
+      run: |
+        if [ -d "bash_scripts_for_pentest/tests" ] && find bash_scripts_for_pentest/tests -name "*.bats" | grep -q .; then
+          bats bash_scripts_for_pentest/tests/
+        else
+          echo "No .bats files found, skipping"
+        fi
+
+    - name: Module smoke test (syntax, no-args crash, --help)
+      run: bash bash_scripts_for_pentest/tests/module_smoke_test.sh
+
+  security:
+    runs-on: ubuntu-latest
+    name: Security Checks
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Verify authorization disclaimers
+      run: |
+        # Scoped to attack modules only -- lib/ is sourced plumbing, not
+        # something an operator runs directly, so it doesn't carry this
+        # per-module disclaimer.
+        missing=0
+        while IFS= read -r -d '' script; do
+          grep -q "AUTHORIZATION DISCLAIMER" "$script" || { echo "Missing disclaimer: $script"; missing=$((missing + 1)); }
+        done < <(find bash_scripts_for_pentest -name "*.sh" -not -path "*/pentest_lab/*" -not -path "*/lib/*" -print0)
+        if [ "$missing" -gt 0 ]; then
+          echo "$missing script(s) missing the authorization disclaimer"
+          exit 1
+        fi

@@ -1,12 +1,191 @@
+GhostStrike Public Source License v1.0
+Inspired by the Nmap Public Source License.
+
 Copyright (c) 2026 Fouad Ailabouni. All rights reserved.
 
-Permission is granted to view this source code and use the software for personal, non-commercial, internal purposes only.
+Licensing contact: fouadailabounifouad@gmail.com
 
-You may not:
-1. modify, adapt, or create derivative works of this software;
-2. redistribute this software or any part of it;
-3. sublicense, sell, rent, lease, or commercially exploit this software;
-4. remove copyright or ownership notices;
-5. represent this software as your own work.
+============================================================
+0. PREAMBLE
+============================================================
 
-Any use not expressly permitted in this license is prohibited without prior written permission from the copyright owner.
+GhostStrike ("the Software") is offered to the public as free, open,
+inspectable source code, subject to the terms below. This license is
+built on the copyleft mechanics of the GNU General Public License,
+version 2 ("GPLv2"), with additional terms specific to GhostStrike
+that GPLv2 alone does not provide -- most importantly, a restriction
+on embedding GhostStrike in proprietary commercial products without a
+separate commercial license from the Copyright Owner. Where this
+license and GPLv2 conflict, the additional terms in Sections 3-5 below
+control.
+
+This is not the Nmap Public Source License (NPSL); it does not use
+that name, and it is not a copy of Nmap's license text. It follows a
+similar public-source-plus-commercial-exception structure, drafted
+independently for GhostStrike.
+
+============================================================
+1. DEFINITIONS
+============================================================
+
+"Copyright Owner" means Fouad Ailabouni.
+
+"the Software" means GhostStrike, including its source code, scripts,
+documentation, and any files distributed as part of the GhostStrike
+project.
+
+"Derivative Work" means any modification, adaptation, translation, or
+work based on the Software, including forks and patches.
+
+"Commercial Product" means any product, service, platform, appliance,
+virtual machine, container image, managed offering, or software-as-a-
+service that is sold, licensed for a fee, or offered to third parties
+as part of a revenue-generating business, whether or not the Software
+itself is charged for separately.
+
+"OEM License" or "Commercial License" means a separate written license
+agreement obtained directly from the Copyright Owner authorizing use
+of the Software in a Commercial Product on terms outside this license.
+
+============================================================
+2. FREE PUBLIC USE AND SOURCE ACCESS
+============================================================
+
+Subject to the terms of this license, you are granted a worldwide,
+royalty-free license to:
+
+  a. view, study, and run the Software's source code;
+  b. use the Software for personal, educational, research, and
+     authorized security-testing purposes;
+  c. modify the Software and create Derivative Works, subject to
+     Section 3;
+  d. distribute unmodified copies of the Software, provided this
+     license file and all copyright notices are preserved intact.
+
+============================================================
+3. COPYLEFT: MODIFIED VERSIONS MUST REMAIN OPEN
+============================================================
+
+If you distribute a Derivative Work of the Software, in source or
+compiled/packaged form, you must:
+
+  a. license the entire Derivative Work under this same license
+     (the GhostStrike Public Source License v1.0), with no additional
+     restrictions beyond what this license already imposes;
+  b. make the complete corresponding source code of the Derivative
+     Work available to anyone who receives it, under the same terms
+     required by GPLv2 Section 3;
+  c. retain all original copyright, attribution, and license notices,
+     and clearly mark the changes you made and the date of the
+     changes;
+  d. not misrepresent the origin of the Derivative Work -- you may
+     not claim it is the unmodified, official GhostStrike project.
+
+A Derivative Work may not be relicensed under a different license,
+including a more permissive open-source license, without written
+permission from the Copyright Owner.
+
+============================================================
+4. COMMERCIAL / OEM RESTRICTION
+============================================================
+
+Notwithstanding Sections 2 and 3, you may NOT, without first obtaining
+an OEM License from the Copyright Owner:
+
+  a. embed, bundle, or incorporate the Software (in whole or in part,
+     modified or unmodified) into a Commercial Product;
+  b. redistribute the Software as a component, dependency, or
+     underlying engine of a Commercial Product;
+  c. offer the Software, or any Derivative Work of it, as a hosted or
+     managed service to third parties for a fee;
+  d. use the Software internally within a for-profit organization's
+     paid consulting or managed-security-testing engagements delivered
+     to clients, where the Software is a material part of the
+     deliverable, without an OEM License covering that use.
+
+Personal use, internal non-revenue-generating use, academic use,
+authorized individual penetration-testing engagements conducted by an
+independent practitioner using the unmodified or self-modified
+Software (not resold or sublicensed as a product), and contributions
+back to the public GhostStrike project are not restricted by this
+Section.
+
+If you are unsure whether your intended use requires an OEM License,
+contact the Copyright Owner before proceeding: fouadailabounifouad@gmail.com
+
+============================================================
+5. NAME AND TRADEMARK
+============================================================
+
+"GhostStrike" and any associated logos or branding are the property of
+the Copyright Owner. You may not use the GhostStrike name, branding,
+or any confusingly similar name to:
+
+  a. market, promote, or distribute a Derivative Work or unrelated
+     product without written permission;
+  b. imply endorsement, sponsorship, or affiliation by the Copyright
+     Owner where none exists.
+
+A Derivative Work distributed under Section 3 must use a distinct name
+that does not include "GhostStrike" as its primary identifier, unless
+written permission is granted.
+
+============================================================
+6. AUTHORIZED SECURITY TESTING ONLY
+============================================================
+
+The Software is provided exclusively for use in authorized security
+testing and lawful penetration-testing engagements. You must obtain
+explicit written authorization from the owner of any system, network,
+or application before using the Software against it. Unauthorized use
+may violate computer fraud and abuse laws in your jurisdiction. This
+Section does not limit or replace Sections 1-5; it is an additional
+use restriction specific to the Software's function as a security
+testing tool.
+
+============================================================
+7. NO WARRANTY
+============================================================
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT OWNER BE LIABLE FOR
+ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE, INCLUDING ANY DAMAGE RESULTING FROM UNAUTHORIZED OR UNLAWFUL
+USE.
+
+============================================================
+8. TERMINATION
+============================================================
+
+This license terminates automatically if you breach any of its terms.
+Upon termination, you must cease all use, distribution, and copying of
+the Software and any Derivative Work, except as necessary to come back
+into compliance or to seek an OEM License. The Copyright Owner may
+reinstate the license at their discretion.
+
+============================================================
+9. OBTAINING A COMMERCIAL / OEM LICENSE
+============================================================
+
+To license the Software for use in a Commercial Product, or for any
+use restricted by Section 4, contact the Copyright Owner with:
+
+  - your organization's name;
+  - a description of the intended product or service;
+  - the scope of intended distribution or deployment.
+
+Contact: fouadailabounifouad@gmail.com
+
+============================================================
+10. GENERAL
+============================================================
+
+If any provision of this license is held unenforceable, the remaining
+provisions remain in full effect. This license does not grant any
+rights not expressly stated. All rights not expressly granted are
+reserved by the Copyright Owner.
+
+© 2026 Fouad Ailabouni. All rights reserved.

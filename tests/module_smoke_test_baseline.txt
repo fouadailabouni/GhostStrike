@@ -1,0 +1,31 @@
+GhostStrike Module Smoke Test
+Scanning: /mnt/c/Users/Fouad Ailabouni/Desktop/GhostStrike/tests/../bash_scripts_for_pentest
+
+Found 122 module scripts
+
+[1;33m[NOARGS FAIL][0m 00-Framework-Core/authorization_framework.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 00-Framework-Core/ci_linting_framework.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 00-Framework-Core/json_output_framework.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 00-Framework-Core/mitre_attack_framework.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 00-Framework-Core/pentest_roadmap.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 01-Network-Security/netdiscover_automation.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 02-Web-Application-Security/api_security_tester.sh -- exited 0 with no arguments
+[0;31m[NOARGS FAIL][0m 02-Web-Application-Security/owasp_top10_scanner.sh -- unbound variable crash
+[1;33m[NOARGS FAIL][0m 02-Web-Application-Security/webapp_testing.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 03-Wireless-Security/bluetooth_scanner.sh -- exited 0 with no arguments
+[0;31m[NOARGS FAIL][0m 03-Wireless-Security/wifi_penetration_tester.sh -- unbound variable crash
+[0;31m[NOARGS FAIL][0m 06-Password-Attacks/password_attack_suite.sh -- unbound variable crash
+[1;33m[NOARGS FAIL][0m 08-System-Security/file_integrity_monitor.sh -- exited 0 with no arguments
+[0;31m[NOARGS FAIL][0m 13-Post-Exploitation/privilege_escalation_checker.sh -- timed out (5s)
+[1;33m[NOARGS FAIL][0m 14-Reporting-Tools/pentest_report_generator.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m 16-Specialized-Testing/iot_security_tester.sh -- exited 0 with no arguments
+[1;33m[NOARGS FAIL][0m policy_validator.sh -- exited 0 with no arguments
+
+════════════════════════════════════════════════════
+ Total scripts:       122
+ Syntax failures:     0
+ No-args failures:    17
+ --help failures:     0
+ --help unsupported:  19
+════════════════════════════════════════════════════
+ Full results: /mnt/c/Users/Fouad Ailabouni/Desktop/GhostStrike/tests/module_smoke_test_results.tsv

@@ -11,7 +11,7 @@
 #   make benchmark  — run benchmark dry-run
 #   make clean      — remove generated artifacts
 
-SCRIPTS_DIR := bash scripts for pentest
+SCRIPTS_DIR := bash_scripts_for_pentest
 CYTOOLKIT   := CyberToolkit
 PYTHON      := python3
 
