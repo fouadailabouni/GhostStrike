@@ -30,5 +30,13 @@ click>=8.1.7              # CLI argument parsing for standalone Python scripts
 anthropic>=0.40.0         # Claude backend (default)
 openai>=1.0.0             # GPT-4o fallback backend
 
+# ── MCP Server (ai_engine/mcp_server/) ──
+# Local, stdio-only -- exposes one engagement's findings/attack-graph/repro
+# data to an MCP client (Claude Code, Claude Desktop, Cursor). No network
+# transport, no listening socket. Pinned >=2.0.0: the 1.x decorator API
+# (@server.list_tools()) is NOT compatible with 2.x's MCPServer/@server.tool()
+# API this code is written against -- see ai_engine/mcp_server/server.py.
+mcp>=2.0.0
+
 # ── Build / Packaging ──
 pyinstaller>=6.0.0        # Windows .exe build

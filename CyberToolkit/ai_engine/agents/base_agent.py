@@ -67,6 +67,8 @@ class GhostStrikeAgent:
         output_callback: Optional[Callable[[str], None]] = None,
         max_iterations: int = 30,
         engagement_id: str = "",
+        autonomy_tier: str = "recommend",
+        approval_callback: Optional[Callable[[Dict], bool]] = None,
     ) -> None:
         self._model          = model_provider
         self._tracer         = tracer or GhostStrikeTracer(engagement_id=engagement_id)
@@ -74,6 +76,11 @@ class GhostStrikeAgent:
         self._output_cb      = output_callback
         self._max_iterations = max_iterations
         self._engagement_id  = engagement_id
+        # Stored before _register_tools() runs (see below) so subclasses can
+        # pass these straight through to GhostStrikeRunner when they build
+        # it -- see tools/module_runner.py for what the tier/callback do.
+        self._autonomy_tier    = autonomy_tier
+        self._approval_cb      = approval_callback
         self._system_prompt  = self._load_prompt()
         self._tools: List[Dict]           = []     # OpenAI-format tool schemas
         self._handlers: Dict[str, Any]    = {}     # tool_name → callable

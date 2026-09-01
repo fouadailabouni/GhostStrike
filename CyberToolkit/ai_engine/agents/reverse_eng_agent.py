@@ -24,7 +24,7 @@ class ReverseEngAgent(GhostStrikeAgent):
     def _register_tools(self) -> None:
         shell  = ShellExecutor(guardrails=self._guardrails, output_callback=self._output_cb)
         code   = CodeRunner(output_callback=self._output_cb)
-        ghost  = GhostStrikeRunner(output_callback=self._output_cb)
+        ghost  = GhostStrikeRunner(output_callback=self._output_cb, autonomy_tier=self._autonomy_tier, approval_callback=self._approval_cb)
         reason = ReasoningEngine()
 
         self._add_tool(SHELL_SCHEMA,  shell.run)

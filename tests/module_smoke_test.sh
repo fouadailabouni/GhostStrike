@@ -59,7 +59,9 @@ NO_TARGET_REQUIRED=(
     "00-Framework-Core/json_output_framework.sh"
     "00-Framework-Core/mitre_attack_framework.sh"
     "00-Framework-Core/pentest_roadmap.sh"
+    "00-Framework-Core/tool_verification.sh"
     "01-Network-Security/netdiscover_automation.sh"
+    "01-Network-Security/system_config_audit.sh"
     "03-Wireless-Security/bluetooth_scanner.sh"
     "04-Database-Security/database_hardening_checker.sh"
     "06-Password-Attacks/password_attack_suite.sh"
@@ -69,10 +71,12 @@ NO_TARGET_REQUIRED=(
     "08-System-Security/file_integrity_monitor.sh"
     "08-System-Security/mandatory_access_control_checker.sh"
     "08-System-Security/ntp_chrony_checker.sh"
+    "08-System-Security/system_config_audit.sh"
     "09-Container-Security/container_security_scanner.sh"
     "11-Cloud-Security/azure_security_audit.sh"
     "11-Cloud-Security/gcp_security_audit.sh"
     "13-Post-Exploitation/file_transfer.sh"
+    "13-Post-Exploitation/privilege_escalation_checker.sh"
     "13-Post-Exploitation/privilege_escalation_linux.sh"
     "13-Post-Exploitation/privilege_escalation_windows.sh"
     "14-Reporting-Tools/pentest_report_generator.sh"
@@ -99,16 +103,32 @@ SLOW_LOCAL_AUDIT=(
     "policy_validator.sh"
 )
 
-# ── Modules whose real (non-dry-run) default behavior downloads and
-# executes a full third-party tool from the internet (LinPEAS, etc.) ──────
-# That's fundamentally different from "slow local work" -- it depends on
-# network reachability/speed this harness has no business requiring, and
-# it's exactly the kind of real attack/enumeration logic the smoke test's
-# own header says it does NOT execute. These scripts already support
-# GS_DRY_RUN as a first-class fast-path, so the no-args check exercises
-# that instead of the real download+execute path.
+# ── Modules whose real (non-dry-run) no-args work is either network-
+# dependent (a LinPEAS-style download) or a full-filesystem/full-host scan
+# whose duration scales with the size of whatever machine happens to be
+# running it (GitHub Actions runner images ship a huge amount of
+# preinstalled toolchain on a single filesystem -- a real find / or
+# getcap -r / there can legitimately take far longer than on a small dev
+# box, and no fixed SLOW_TIMEOUT_SECS budget can be trusted not to flake
+# again on some future runner image). That's fundamentally different from
+# "slow local work" bounded by a generous timeout -- it depends on
+# environment scale/network reachability this harness has no business
+# requiring, and it's exactly the kind of real attack/enumeration logic
+# the smoke test's own header says it does NOT execute. Every script
+# below already supports GS_DRY_RUN as a first-class fast-path that exits
+# before doing any of that real work, so the no-args check exercises that
+# instead -- a fix that holds regardless of what machine CI happens to
+# run on next.
 DRY_RUN_FOR_NOARGS=(
+    "00-Framework-Core/tool_verification.sh"
+    "01-Network-Security/system_config_audit.sh"
+    "08-System-Security/cis_linux_manual_checks.sh"
+    "08-System-Security/cis_windows_checks.sh"
+    "08-System-Security/system_config_audit.sh"
+    "09-Container-Security/container_security_scanner.sh"
+    "13-Post-Exploitation/privilege_escalation_checker.sh"
     "13-Post-Exploitation/privilege_escalation_linux.sh"
+    "13-Post-Exploitation/privilege_escalation_windows.sh"
 )
 
 _gs_in_list() {

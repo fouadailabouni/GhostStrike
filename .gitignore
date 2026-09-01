@@ -13,10 +13,16 @@ bash_scripts_for_pentest/evidence/
 bash_scripts_for_pentest/findings/
 bash_scripts_for_pentest/sessions/
 bash_scripts_for_pentest/metrics/repro_sessions/
+bash_scripts_for_pentest/metrics/attack_graph/
 bash_scripts_for_pentest/benchmarks/results/
 bash_scripts_for_pentest/test_results/
+bash_scripts_for_pentest/runs/
 bash_scripts_for_pentest/00-Framework-Core/ci_config/
 bash_scripts_for_pentest/00-Framework-Core/ci_reports/
+
+# Engagement runtime state (not source) -- accumulates real engagement
+# records as the tool is used.
+CyberToolkit/engagements.json
 
 # Local lab data (docker volumes, not source)
 bash_scripts_for_pentest/19-Lab-Environment/pentest_lab/volumes/

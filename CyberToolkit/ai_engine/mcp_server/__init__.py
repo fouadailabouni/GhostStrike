@@ -1,0 +1,1 @@
+"""GhostStrike MCP Server package. See server.py for the entry point."""

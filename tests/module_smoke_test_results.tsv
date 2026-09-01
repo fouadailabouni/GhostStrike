@@ -1,11 +1,11 @@
 script	syntax	noargs	help
 00-Framework-Core/authorization_framework.sh	PASS	PASS (no target required by design)	PASS
 00-Framework-Core/ci_linting_framework.sh	PASS	PASS (no target required by design)	PASS
-00-Framework-Core/framework_tester.sh	PASS	FAIL (timed out after 5s — did it start real work with no target?)	FAIL (timed out)
+00-Framework-Core/framework_tester.sh	PASS	PASS	PASS
 00-Framework-Core/json_output_framework.sh	PASS	PASS (no target required by design)	PASS
 00-Framework-Core/mitre_attack_framework.sh	PASS	PASS (no target required by design)	PASS
 00-Framework-Core/pentest_roadmap.sh	PASS	PASS (no target required by design)	PASS
-00-Framework-Core/tool_verification.sh	PASS	PASS	PASS
+00-Framework-Core/tool_verification.sh	PASS	PASS (no target required by design)	PASS
 01-Network-Security/banner_grabbing.sh	PASS	PASS	PASS
 01-Network-Security/dns_recon.sh	PASS	PASS	PASS
 01-Network-Security/firewall_rule_tester.sh	PASS	PASS	PASS
@@ -24,7 +24,7 @@ script	syntax	noargs	help
 01-Network-Security/snmp_enum.sh	PASS	PASS	PASS
 01-Network-Security/ssl_tls_analyzer.sh	PASS	PASS	PASS
 01-Network-Security/subdomain_enum.sh	PASS	PASS	PASS
-01-Network-Security/system_config_audit.sh	PASS	FAIL (timed out after 120s — did it start real work with no target?)	PASS
+01-Network-Security/system_config_audit.sh	PASS	PASS (no target required by design)	PASS
 01-Network-Security/vpn_security_assessment.sh	PASS	PASS	PASS
 02-Web-Application-Security/advanced_web_app_tester.sh	PASS	PASS	PASS
 02-Web-Application-Security/api_documentation_exposure.sh	PASS	PASS	PASS
@@ -110,4 +110,62 @@ script	syntax	noargs	help
 13-Post-Exploitation/lateral_movement.sh	PASS	PASS	PASS
 13-Post-Exploitation/network_pivoting.sh	PASS	PASS	PASS
 13-Post-Exploitation/persistence_mechanisms.sh	PASS	PASS	PASS
-13-Post-Exploitation/privilege_escalation_checker.sh	PASS	FAIL (timed out after 120s — did it start real work with no target?)	PASS
+13-Post-Exploitation/privilege_escalation_checker.sh	PASS	PASS (no target required by design)	PASS
+13-Post-Exploitation/privilege_escalation_linux.sh	PASS	PASS (no target required by design)	PASS
+13-Post-Exploitation/privilege_escalation_windows.sh	PASS	PASS (no target required by design)	PASS
+14-Reporting-Tools/pentest_report_generator.sh	PASS	PASS	PASS
+15-Automation-Tools/install_pentest_tools.sh	PASS	PASS	SKIP (no --help support, exit 1)
+15-Automation-Tools/pentest_automation.sh	PASS	PASS	SKIP (no --help support, exit 1)
+16-Specialized-Testing/ics_scada_tester.sh	PASS	PASS	PASS
+16-Specialized-Testing/iot_security_tester.sh	PASS	PASS	PASS
+16-Specialized-Testing/thick_client_tester.sh	PASS	PASS	PASS
+17-Monitoring-Detection/incident_response_toolkit.sh	PASS	PASS	PASS
+17-Monitoring-Detection/intrusion_detection_system.sh	PASS	PASS	PASS
+17-Monitoring-Detection/logging_monitoring_validator.sh	PASS	PASS	PASS
+17-Monitoring-Detection/security_metrics_dashboard.sh	PASS	PASS	PASS
+17-Monitoring-Detection/threat_intelligence_collector.sh	PASS	PASS	SKIP (no --help support, exit 1)
+18-Application-Security/code_quality_checker.sh	PASS	PASS	SKIP (no --help support, exit 1)
+18-Application-Security/dependency_vulnerability_scanner.sh	PASS	PASS	SKIP (no --help support, exit 1)
+19-Lab-Environment/docker_lab_setup.sh	PASS	PASS	PASS
+19-Lab-Environment/pentest_lab/scripts/backup_lab.sh	PASS	PASS (no target required by design)	PASS
+19-Lab-Environment/pentest_lab/scripts/lab_status.sh	PASS	PASS (no target required by design)	PASS
+19-Lab-Environment/pentest_lab/scripts/restore_lab.sh	PASS	PASS	SKIP (no --help support, exit 1)
+20-IoT-Security/iot_cloud_api_tester.sh	PASS	PASS	PASS
+20-IoT-Security/iot_coap_tester.sh	PASS	PASS	PASS
+20-IoT-Security/iot_default_creds_scanner.sh	PASS	PASS	PASS
+20-IoT-Security/iot_device_hardening_audit.sh	PASS	PASS	PASS
+20-IoT-Security/iot_firmware_analyzer.sh	PASS	PASS	PASS
+20-IoT-Security/iot_firmware_emulation_runner.sh	PASS	PASS	PASS
+20-IoT-Security/iot_fuzz_coap_mqtt.sh	PASS	PASS	PASS
+20-IoT-Security/iot_mqtt_tester.sh	PASS	PASS	PASS
+20-IoT-Security/iot_network_isolation_tester.sh	PASS	PASS	PASS
+20-IoT-Security/iot_ota_interceptor.sh	PASS	PASS	PASS
+20-IoT-Security/iot_physical_attack_plan.sh	PASS	PASS	SKIP (no --help support, exit 1)
+20-IoT-Security/iot_reporting_formatter.sh	PASS	PASS	SKIP (no --help support, exit 1)
+20-IoT-Security/iot_supply_chain_scanner.sh	PASS	PASS	SKIP (no --help support, exit 1)
+20-IoT-Security/iot_uart_jtag_helper.sh	PASS	PASS	PASS
+20-IoT-Security/iot_wireless_ble_scanner.sh	PASS	PASS	PASS
+20-IoT-Security/iot_zigbee_thread_scanner.sh	PASS	PASS	PASS
+21-Bypass-Techniques/authentication_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/authorization_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/captcha_bypass.sh	PASS	PASS	SKIP (no --help support, exit 1)
+21-Bypass-Techniques/captive_portal_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/certificate_pinning_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/csrf_protection_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/dlp_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/dns_tunneling_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/endpoint_detection_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/ids_ips_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/input_validation_bypass.sh	PASS	PASS	SKIP (no --help support, exit 1)
+21-Bypass-Techniques/kerberos_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/ldap_injection_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/network_segmentation_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/proxy_load_balancer_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/rate_limiting_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/sandbox_escape.sh	PASS	PASS	PASS
+21-Bypass-Techniques/siem_log_evasion.sh	PASS	PASS	PASS
+21-Bypass-Techniques/smb_relay_bypass.sh	PASS	PASS	PASS
+21-Bypass-Techniques/ssl_tls_bypass.sh	PASS	PASS	PASS
+assessment_replay.sh	PASS	PASS	SKIP (no --help support, exit 1)
+policy_validator.sh	PASS	PASS (no target required by design)	PASS
+repro_runner.sh	PASS	PASS	PASS

@@ -42,8 +42,25 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
+
+# policy_query.py already parses policy.yaml's per-module
+# require_explicit_approval/reason fields for lib/policy_engine.sh -- reused
+# here as-is rather than re-parsing the YAML a second way, so there is one
+# authoritative "does this module need approval" answer, not two that could
+# drift (bash-side enforcement and AI-side prompting reading the same file
+# through the same code).
+_POLICY_QUERY_IMPORT_ERROR = ""
+try:
+    _lib_dir = str(Path(__file__).resolve().parent.parent.parent.parent / "bash_scripts_for_pentest" / "lib")
+    if _lib_dir not in sys.path:
+        sys.path.insert(0, _lib_dir)
+    import policy_query as _policy_query
+except Exception as _exc:  # pragma: no cover - PyYAML missing, policy.yaml unreadable, etc.
+    _policy_query = None
+    _POLICY_QUERY_IMPORT_ERROR = str(_exc)
 
 TOOL_SCHEMA: Dict = {
     "type": "function",
@@ -132,6 +149,8 @@ class GhostStrikeRunner:
         scripts_base_dir: Optional[str] = None,
         command_builder: Optional[Callable[[str, List[str]], List[str]]] = None,
         output_callback=None,
+        autonomy_tier: str = "recommend",
+        approval_callback: Optional[Callable[[Dict], bool]] = None,
     ) -> None:
         if scripts_base_dir:
             self._base = Path(scripts_base_dir)
@@ -146,6 +165,19 @@ class GhostStrikeRunner:
         self._command_builder = command_builder or self._fallback_command_builder
 
         self._output_cb = output_callback
+
+        # Observe: never executes, only describes what would run.
+        # Recommend (default): every run needs approval_callback to say yes.
+        # Operate: SAFE_ENUM/VALIDATION auto-proceed; HIGH_IMPACT/LAB_ONLY and
+        # anything policy.yaml flags require_explicit_approval still need
+        # approval_callback -- Operate means "stop asking for routine recon,"
+        # never "stop asking before anything destructive."
+        tier = (autonomy_tier or "recommend").strip().lower()
+        if tier not in ("observe", "recommend", "operate"):
+            tier = "recommend"
+        self._autonomy_tier = tier
+        self._approval_cb = approval_callback
+
         self._module_index: Dict[str, Path] = {}
         self._trust_by_path: Dict[str, str] = {}
         self._build_index()
@@ -195,6 +227,49 @@ class GhostStrikeRunner:
                 f"instead, or wire gs_policy_gate into it before the AI can use it. "
                 f"(Documented trust_level: {trust or 'none'}.)"
             )
+
+        # ── Autonomy tier gate ──
+        # This runs *in addition to* the gate-or-refuse check above, never
+        # instead of it -- a module with no gs_policy_gate call is refused
+        # regardless of tier. This gate decides whether the AI may proceed
+        # to attempt a module that *does* have real bash-side enforcement.
+        module_basename = Path(rel).name
+        approval_required, approval_reason = self._module_requires_explicit_approval(module_basename)
+        needs_approval = approval_required or trust in ("HIGH_IMPACT", "LAB_ONLY")
+
+        if self._autonomy_tier == "observe":
+            return (
+                f"PROPOSED (not executed -- Observe mode): would run '{module_name}' "
+                f"(trust={trust}) with params={params or {}}. Observe mode never executes "
+                f"tools; switch to Recommend or Operate mode to allow this to run."
+            )
+
+        if self._autonomy_tier == "operate" and not needs_approval:
+            pass  # SAFE_ENUM/VALIDATION, no policy.yaml override -- proceed without asking.
+        else:
+            # Recommend tier always asks; Operate tier asks only when the
+            # module is HIGH_IMPACT/LAB_ONLY or policy.yaml requires it.
+            if self._approval_cb is None:
+                return (
+                    f"REFUSED: '{module_name}' (trust={trust}) requires operator approval "
+                    f"before the AI can run it (autonomy tier: {self._autonomy_tier}), but no "
+                    f"approval mechanism is wired up in this session. Run it manually instead."
+                )
+            request = {
+                "module_name": module_name,
+                "params": params or {},
+                "trust": trust,
+                "reason": approval_reason or ("HIGH_IMPACT/LAB_ONLY module" if trust in ("HIGH_IMPACT", "LAB_ONLY") else ""),
+            }
+            try:
+                approved = bool(self._approval_cb(request))
+            except Exception as exc:
+                return f"Error requesting approval for '{module_name}': {exc}"
+            if not approved:
+                return (
+                    f"DENIED: operator did not approve running '{module_name}' (trust={trust})."
+                    + (f" Reason for requiring approval: {approval_reason}" if approval_reason else "")
+                )
 
         repro_runner = self._base / "repro_runner.sh"
         if not repro_runner.exists():
@@ -311,6 +386,25 @@ class GhostStrikeRunner:
         except OSError:
             return False
         return "gs_policy_gate" in content
+
+    def _module_requires_explicit_approval(self, module_basename: str) -> "tuple[bool, str]":
+        """(required, reason) per policy.yaml's modules: block -- the same
+        data lib/policy_engine.sh's gs_policy_check_module reads via this
+        same policy_query.py, so bash enforcement and AI-side prompting can
+        never disagree about which modules need it."""
+        if _policy_query is None:
+            return False, ""
+        policy_path = self._base / "policy.yaml"
+        if not policy_path.exists():
+            return False, ""
+        try:
+            policy = _policy_query.load_policy(str(policy_path))
+        except Exception:
+            return False, ""
+        entry = (policy.get("modules", {}) or {}).get(module_basename)
+        if entry and entry.get("require_explicit_approval"):
+            return True, entry.get("reason", "")
+        return False, ""
 
     def _load_trust_registry(self) -> None:
         csv_path = self._base / "MODULE_INVENTORY.csv"

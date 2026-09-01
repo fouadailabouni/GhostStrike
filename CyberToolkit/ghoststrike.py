@@ -15,7 +15,7 @@ Copyright (C) 2026 Fouad Ailabouni. All rights reserved.
 """
 
 import customtkinter as ctk
-import os, subprocess, threading, signal, re, time, json, math, datetime
+import os, sys, subprocess, threading, signal, re, time, json, math, datetime
 from pathlib import Path
 from tkinter import messagebox, filedialog, Canvas
 from script_metadata import SCRIPT_DATABASE, GOOD, PARTIAL, NEEDS_WORK
@@ -291,6 +291,7 @@ class GhostStrikeApp(ctk.CTk):
         self.ai_mode = False
         self.ai_agent_name = "Red Team"
         self.ai_backend = "claude"
+        self.ai_autonomy_tier = "recommend"   # observe | recommend | operate
         self.vault_master_key = None   # session-only; never written to disk
         self._ai_running = False
 
@@ -650,6 +651,20 @@ class GhostStrikeApp(ctk.CTk):
         self._ai_agent_cb.pack(side="right", padx=(4, 2), pady=4)
         self._ai_agent_cb.configure(state="disabled")
 
+        # Autonomy tier -- Observe never executes, Recommend asks before every
+        # module call, Operate only asks for HIGH_IMPACT/LAB_ONLY or anything
+        # policy.yaml flags require_explicit_approval. See
+        # ai_engine/tools/module_runner.py for the enforcement side of this.
+        self._ai_tier_var = ctk.StringVar(value="Recommend")
+        self._ai_tier_cb = ctk.CTkComboBox(th, values=["Observe", "Recommend", "Operate"],
+            variable=self._ai_tier_var, state="readonly", width=110, height=24,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=C["obsidian"], border_color=C["text_dim"],
+            button_color=C["slate"], dropdown_fg_color=C["slate"],
+            command=lambda v: setattr(self, "ai_autonomy_tier", v.lower()))
+        self._ai_tier_cb.pack(side="right", padx=(4, 2), pady=4)
+        self._ai_tier_cb.configure(state="disabled")
+
         # Manual / AI Co-Pilot mode toggle. Disabled (not hidden) when the
         # ai_engine package failed to import, so the reason is discoverable
         # instead of the feature silently not existing.
@@ -985,7 +1000,43 @@ class GhostStrikeApp(ctk.CTk):
     def _build_shell_command(self, path, args):
         norm = path.replace("\\", "/")
         wsl = re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}", norm)
-        astr = " ".join(f'"{a}"' for a in args)
+
+        # Route through repro_runner.sh --no-capture rather than invoking the
+        # module directly. Manual GUI runs used to bypass repro_runner.sh
+        # entirely, so evidence collection and reproducibility scoring only
+        # ever happened for AI-agent-initiated runs (which go through
+        # ai_engine/tools/module_runner.py, which always wraps this way) --
+        # meaning most real usage got neither.
+        #
+        # --no-capture specifically: repro_runner.sh's default capture mode
+        # pipes the module's stdout/stderr through `tee` to save a transcript
+        # artifact. That pipe makes isatty() on the module's own stdout
+        # return false even though the *outer* process is still attached to
+        # _execute_script's real PTY on Linux -- readline/ncurses-based
+        # interactive tools (msfconsole chief among them) can behave
+        # differently or lose interactivity once their own stdout isn't a
+        # real tty, regardless of what's above them in the process tree.
+        # --no-capture skips that pipe entirely, so the module's stdin/stdout
+        # stay exactly as directly connected as if repro_runner.sh weren't
+        # there at all -- interactivity is unaffected. What's NOT lost:
+        # repro_runner.sh's post-execution loop still scans GS_OUTPUT_DIR and
+        # hashes/evidences every real file the module writes there, and the
+        # repro session itself (tool versions, commands logged, scope
+        # documented) still gets scored -- only the raw terminal transcript
+        # isn't saved as a separate artifact, which is an acceptable trade
+        # for never touching a live interactive session's tty behavior.
+        repro_runner = os.path.join(SCRIPTS_DIR, "repro_runner.sh")
+        if os.path.exists(repro_runner):
+            runner_wsl = re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}",
+                                 repro_runner.replace("\\", "/"))
+            runner_norm = repro_runner.replace("\\", "/")
+            full_astr = " ".join(f'"{a}"' for a in (["--no-capture", wsl] + list(args)))
+            full_astr_native = " ".join(f'"{a}"' for a in (["--no-capture", norm] + list(args)))
+        else:
+            runner_wsl = runner_norm = None
+            full_astr = " ".join(f'"{a}"' for a in args)
+            full_astr_native = full_astr
+
         # Prepend engagement env vars if active
         env_prefix = ""
         if self.active_engagement:
@@ -1001,17 +1052,33 @@ class GhostStrikeApp(ctk.CTk):
                 scope_wsl = re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}",
                                     scope_file.replace("\\", "/"))
                 env_prefix += f'export GS_SCOPE_FILE="{scope_wsl}"; '
+
+        if runner_wsl:
+            try:
+                r = subprocess.run(["wsl", "--status"], capture_output=True, timeout=5)
+                if r.returncode == 0:
+                    return ["wsl", "bash", "-c", f'{env_prefix}bash "{runner_wsl}" {full_astr}']
+            except Exception: pass
+            for gb in [r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"]:
+                if os.path.exists(gb):
+                    return [gb, "-c", f'{env_prefix}bash "{runner_norm}" {full_astr_native}']
+            if os.name != "nt":
+                return ["sudo", "bash", "-c", f'{env_prefix}bash "{runner_wsl}" {full_astr}']
+            return ["bash", "-c", f'{env_prefix}bash "{runner_norm}" {full_astr_native}']
+
+        # Fallback: repro_runner.sh missing (stripped-down deployment) -- run
+        # the module directly, exactly as before this change.
         try:
             r = subprocess.run(["wsl", "--status"], capture_output=True, timeout=5)
             if r.returncode == 0:
-                return ["wsl", "bash", "-c", f'{env_prefix}bash "{wsl}" {astr}']
+                return ["wsl", "bash", "-c", f'{env_prefix}bash "{wsl}" {full_astr}']
         except Exception: pass
         for gb in [r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"]:
             if os.path.exists(gb):
-                return [gb, "-c", f'{env_prefix}bash "{norm}" {astr}']
+                return [gb, "-c", f'{env_prefix}bash "{norm}" {full_astr_native}']
         if os.name != "nt":
-            return ["sudo", "bash", "-c", f'{env_prefix}bash "{norm}" {astr}']
-        return ["bash", "-c", f'{env_prefix}bash "{norm}" {astr}']
+            return ["sudo", "bash", "-c", f'{env_prefix}bash "{wsl}" {full_astr}']
+        return ["bash", "-c", f'{env_prefix}bash "{norm}" {full_astr_native}']
 
     def _execute_script(self, cmd):
         try:
@@ -1279,6 +1346,161 @@ class GhostStrikeApp(ctk.CTk):
             except Exception:
                 pass
 
+    def _open_attack_graph(self):
+        """Builds and opens the attack graph for the active engagement.
+
+        Pure Python (lib/attack_graph_builder.py) -- invoked directly via
+        sys.executable, not through the WSL/git-bash routing _build_shell_command
+        uses for bash modules. It never shells out to bash itself, so there is
+        no cross-environment path translation to do here.
+        """
+        eid = self.active_engagement
+        if not eid:
+            messagebox.showinfo("No Active Engagement",
+                "Select or create an engagement first — the attack graph is built "
+                "from one engagement's findings.")
+            return
+        eng = self._eng_raw.get("engagements", {}).get(eid, {})
+        real_id = eng.get("id", eid)
+        builder = os.path.join(SCRIPTS_DIR, "lib", "attack_graph_builder.py")
+        if not os.path.exists(builder):
+            messagebox.showerror("Attack Graph", f"Builder script not found:\n{builder}")
+            return
+        try:
+            result = subprocess.run(
+                [sys.executable, builder, "render", "--engagement", real_id, "--open"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode != 0:
+                messagebox.showerror("Attack Graph",
+                    f"Failed to build attack graph:\n{result.stderr[-800:] or result.stdout[-800:]}")
+        except Exception as e:
+            messagebox.showerror("Attack Graph", f"Failed to build attack graph:\n{e}")
+
+    def _open_dedup_review(self, parent):
+        """
+        Operator-override panel for lib/finding_dedup.py's proposed merge
+        groups. Replaces the findings viewer's old crude title-match dedup
+        (see _show_findings) with the real tiered dedup engine's output:
+        HIGH/MEDIUM-confidence groups are usually already auto-merged by
+        gs_finding_dedup_auto at write time (see lib/common.sh's
+        gs_auto_record_findings), so what mainly shows up here is the
+        LOW-confidence "same host + same MITRE technique" suggestions that
+        are deliberately never auto-merged -- exactly the case the plan
+        called out (Nmap found the port, Nikto found the vuln on it, no
+        textual title overlap at all).
+        """
+        dedup_py = os.path.join(SCRIPTS_DIR, "lib", "finding_dedup.py")
+        if not os.path.exists(dedup_py):
+            messagebox.showerror("Review Duplicates", f"finding_dedup.py not found:\n{dedup_py}")
+            return
+
+        eid = None
+        if self.active_engagement:
+            eng = self._eng_raw.get("engagements", {}).get(self.active_engagement, {})
+            eid = eng.get("id", self.active_engagement)
+
+        def _scan():
+            cmd = [sys.executable, dedup_py, "scan"]
+            if eid:
+                cmd += ["--engagement", eid]
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                return json.loads(r.stdout) if r.returncode == 0 else []
+            except Exception:
+                return []
+
+        groups = _scan()
+
+        dlg = ctk.CTkToplevel(parent)
+        dlg.title("GhostStrike — Review Duplicate Findings")
+        dlg.geometry("760x560")
+        dlg.configure(fg_color=C["obsidian"])
+        dlg.after(100, lambda w=dlg: (w.update_idletasks(), w.lift(), w.focus_force()))
+
+        hdr = ctk.CTkFrame(dlg, fg_color=C["abyss"], corner_radius=0, height=44)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        ctk.CTkLabel(hdr, text=f"⌘  PROPOSED MERGES  [{len(groups)} group(s)]",
+            font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+            text_color=C["neon_amber"]).pack(side="left", padx=16, pady=11)
+
+        if not groups:
+            ctk.CTkLabel(dlg, text="No proposed duplicate groups right now.\n"
+                "(High/medium-confidence duplicates are usually auto-merged already —\n"
+                "this list is mainly for lower-confidence suggestions that need a human call.)",
+                font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text_dim"],
+                justify="center").pack(expand=True)
+            return
+
+        sf = ctk.CTkScrollableFrame(dlg, fg_color="transparent")
+        sf.pack(fill="both", expand=True, padx=12, pady=12)
+
+        findings_dir = Path(SCRIPTS_DIR) / "findings"
+
+        def _title_of(finding_id):
+            try:
+                d = json.loads((findings_dir / f"{finding_id}.json").read_text())
+                return f"[{d.get('severity','?')}] {d.get('title','?')}"
+            except Exception:
+                return finding_id
+
+        def _refresh():
+            dlg.destroy()
+            self._open_dedup_review(parent)
+
+        for g in groups:
+            members = g.get("members", [])
+            card = ctk.CTkFrame(sf, fg_color=C["card"], corner_radius=6, border_width=1,
+                border_color=C["border"])
+            card.pack(fill="x", pady=5)
+
+            conf = g.get("confidence", "?")
+            conf_color = {"HIGH": C["neon_green"], "MEDIUM": C["neon_amber"], "LOW": C["neon_cyan"]}.get(conf, C["text_dim"])
+            ctk.CTkLabel(card, text=f"{conf} confidence" + ("  ·  auto-mergeable" if g.get("auto_mergeable") else "  ·  needs review"),
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                text_color=conf_color, anchor="w").pack(fill="x", padx=12, pady=(10, 2))
+
+            for m in members:
+                ctk.CTkLabel(card, text=f"  • {_title_of(m)}  ({m[:8]}…)",
+                    font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text"],
+                    anchor="w").pack(fill="x", padx=12)
+
+            for reason in g.get("reasons", []):
+                ctk.CTkLabel(card, text=f"  reason: {reason}",
+                    font=ctk.CTkFont(family="Consolas", size=11), text_color=C["text_ghost"],
+                    anchor="w").pack(fill="x", padx=12)
+
+            def _apply(members=members, conf=conf):
+                cmd = [sys.executable, dedup_py, "apply"] + members + ["--confidence", conf]
+                if eid:
+                    cmd += ["--engagement", eid]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                if r.returncode != 0:
+                    messagebox.showerror("Merge Failed", r.stderr or r.stdout)
+                    return
+                _refresh()
+
+            def _reject(members=members):
+                if len(members) != 2:
+                    messagebox.showinfo("Reject", "Reject only applies to 2-finding groups right now — "
+                        "larger groups need a manual look at which pair is actually wrong.")
+                    return
+                cmd = [sys.executable, dedup_py, "reject"] + members
+                subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                _refresh()
+
+            bf = ctk.CTkFrame(card, fg_color="transparent")
+            bf.pack(fill="x", padx=12, pady=(6, 10))
+            ctk.CTkButton(bf, text="MERGE", width=90, height=26,
+                font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+                fg_color=C["neon_green"], hover_color=C["neon_purple"],
+                command=_apply).pack(side="left", padx=(0, 6))
+            ctk.CTkButton(bf, text="NOT A DUPLICATE", width=140, height=26,
+                font=ctk.CTkFont(family="Consolas", size=11),
+                fg_color=C["card"], hover_color=C["hover"], border_width=1, border_color=C["text_dim"],
+                command=_reject).pack(side="left")
+
     def _show_findings(self):
         """Open findings viewer filtered to the currently selected module."""
         import re as _re
@@ -1305,13 +1527,15 @@ class GhostStrikeApp(ctk.CTk):
                 except Exception:
                     pass
 
-        # Deduplicate by title — keep the latest discovered_at
-        seen = {}
-        for f in findings_raw:
-            t = f.get("title", "")
-            if t not in seen or f.get("discovered_at","") > seen[t].get("discovered_at",""):
-                seen[t] = f
-        findings = list(seen.values())
+        # Default view excludes findings the dedup engine (lib/finding_dedup.py)
+        # has already merged into another finding -- superseded_by is set on
+        # the absorbed record, never on the surviving primary. This replaces
+        # the old crude title-string-match dedup that lived here (which had
+        # no concept of merge groups, evidence, or confidence, and could
+        # silently hide a *different* finding that happened to share a
+        # title). Merged-away records are never deleted -- see
+        # _open_dedup_review for reviewing/undoing a merge.
+        findings = [f for f in findings_raw if not f.get("superseded_by")]
 
         # Port → CVE / Metasploit exploit mapping (auto-enrich legacy findings)
         PORT_INFO = {
@@ -1361,6 +1585,16 @@ class GhostStrikeApp(ctk.CTk):
         ctk.CTkLabel(hdr, text="click any row for details",
             font=ctk.CTkFont(family="Consolas", size=13),
             text_color=C["text_ghost"]).pack(side="left", padx=4)
+        ctk.CTkButton(hdr, text="\U0001F578  Attack Graph", width=140, height=28,
+            fg_color=C["abyss"], hover_color=C["neon_purple"], border_width=1,
+            border_color=C["neon_purple"], text_color=C["neon_purple"],
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            command=self._open_attack_graph).pack(side="right", padx=16, pady=9)
+        ctk.CTkButton(hdr, text="⌘  Review Duplicates", width=170, height=28,
+            fg_color=C["abyss"], hover_color=C["neon_amber"], border_width=1,
+            border_color=C["neon_amber"], text_color=C["neon_amber"],
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            command=lambda: self._open_dedup_review(win)).pack(side="right", padx=(4, 0), pady=9)
 
         if not findings:
             msg = f"No findings for [{module_label}] yet.\nRun the module first to populate findings." \
@@ -2106,6 +2340,40 @@ class GhostStrikeApp(ctk.CTk):
             self.engagement_label.configure(
                 text=f"⚑ {label[:22]}", text_color=C["neon_green"])
 
+    def _delete_engagement(self, eid, dlg):
+        """
+        Removes an engagement's *registry entry* only (engagements.json).
+        Deliberately does NOT touch findings/evidence/repro-sessions/attack
+        graphs/reports for that engagement_id -- those are real pentest data,
+        keyed by engagement_id in their own stores (findings/, evidence/,
+        metrics/), independent of this registry entry, and this codebase's
+        own dedup/evidence design never silently deletes real data (a merged
+        finding gets superseded_by, never removed; see lib/finding_dedup.py).
+        Deleting the registry entry just means the id no longer shows up as
+        a selectable engagement -- its historical data is still on disk and
+        still queryable directly via engagement_query.py if you know the id.
+        """
+        eng = self._eng_raw.get("engagements", {}).get(eid, {})
+        label = eng.get("id", eid)
+        if not messagebox.askyesno(
+            "Delete Engagement",
+            f"Delete engagement '{label}' from the registry?\n\n"
+            "This removes it from the engagement list only. Its findings, "
+            "evidence, reproducibility sessions, and reports are NOT deleted "
+            "-- they stay on disk under this engagement_id.\n\n"
+            "This cannot be undone from this dialog."
+        ):
+            return
+        self._eng_raw.get("engagements", {}).pop(eid, None)
+        if self.active_engagement == eid:
+            self.active_engagement = None
+            self._eng_raw["active"] = None
+            if hasattr(self, "engagement_label"):
+                self.engagement_label.configure(text="⚑ NO ENGAGEMENT", text_color=C["neon_amber"])
+        self._save_engagements()
+        dlg.destroy()
+        self._switch_engagement_dialog()
+
     def _new_engagement_dialog(self):
         dlg = ctk.CTkToplevel(self)
         dlg.title("GhostStrike — New Engagement")
@@ -2245,6 +2513,13 @@ class GhostStrikeApp(ctk.CTk):
                     text=f"  {eng.get('client','?')}  |  {eng.get('environment','?')}  |  {eng.get('modules_run',0)} runs",
                     font=ctk.CTkFont(family="Consolas", size=12),
                     text_color=C["text_dim"]).pack(side="left")
+                ctk.CTkButton(row, text="DELETE", width=60, height=24,
+                    font=ctk.CTkFont(family="Consolas", size=11),
+                    fg_color=C["card"], hover_color=C["neon_red"],
+                    border_width=1, border_color=C["neon_red"],
+                    text_color=C["neon_red"],
+                    command=lambda e=eid, d=dlg: self._delete_engagement(e, d)
+                ).pack(side="right", padx=8)
                 if not is_active:
                     ctk.CTkButton(row, text="ACTIVATE", width=70, height=24,
                         font=ctk.CTkFont(family="Consolas", size=12),
@@ -2293,7 +2568,7 @@ class GhostStrikeApp(ctk.CTk):
             font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
             text_color=C["text_dim"]).pack(anchor="w")
         tmpl_var = ctk.StringVar(value="Technical Report")
-        for t in ["Technical Report", "Executive Summary", "Compliance Report"]:
+        for t in ["Technical Report", "Executive Summary", "Developer Remediation"]:
             ctk.CTkRadioButton(body, text=t, variable=tmpl_var, value=t,
                 font=ctk.CTkFont(family="Consolas", size=13),
                 text_color=C["text"], fg_color=C["neon_amber"],
@@ -2355,35 +2630,40 @@ class GhostStrikeApp(ctk.CTk):
         def _do_generate():
             fmts = []
             if fmt_html.get(): fmts.append("html")
-            if fmt_md.get():   fmts.append("markdown")
-            if fmt_json.get(): fmts.append("sarif")
+            if fmt_md.get():   fmts.append("md")
+            if fmt_json.get(): fmts += ["json", "sarif"]
             if not fmts:
                 messagebox.showwarning("Format", "Select at least one output format.")
                 return
             out = outdir_var.get().strip()
             Path(out).mkdir(parents=True, exist_ok=True)
             eid = fld_eng_id.get().strip()
+            if not eid:
+                messagebox.showwarning("Engagement", "Report Studio generates a report for one "
+                    "engagement's findings — set an Engagement ID (or select an active engagement).")
+                return
             status_lbl.configure(text="⟳ Generating...", text_color=C["neon_amber"])
             dlg.update()
-            report_script = str(Path(SCRIPTS_DIR) / "14-Reporting-Tools" / "pentest_report_generator.sh")
-            tmpl_map = {"Technical Report": "technical", "Executive Summary": "executive", "Compliance Report": "full"}
-            report_type = tmpl_map.get(tmpl_var.get(), "full")
-            client = fld_client.get().strip() or "Unknown"
-            date = fld_date.get().strip() or datetime.datetime.now().strftime("%Y-%m-%d")
-            cmd = self._build_shell_command(report_script, [
-                "--client", client,
-                "--project", eid,
-                "--date", date,
-                "--output", out,
-                "--report-type", report_type,
-            ])
+            # Report Studio (CyberToolkit/report_studio/) actually ingests this
+            # engagement's real findings/evidence/repro data -- replaces the old
+            # pentest_report_generator.sh, which was a static Markdown template
+            # filler that never read real scan output at all.
+            variant_map = {"Technical Report": "technical", "Executive Summary": "executive",
+                           "Developer Remediation": "developer"}
+            variant = variant_map.get(tmpl_var.get(), "technical")
+            cmd = [sys.executable, "-m", "report_studio.cli",
+                   "--engagement", eid, "--variant", variant,
+                   "--format", ",".join(fmts), "--out", out]
             try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                cyber_toolkit_dir = os.path.dirname(os.path.abspath(__file__))
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                                    cwd=cyber_toolkit_dir)
                 if r.returncode == 0:
                     status_lbl.configure(text=f"✓ Report saved to: {out}", text_color=C["neon_green"])
                     self._notify("Report Ready", f"Saved to {out}", "success")
                 else:
                     status_lbl.configure(text="✗ Report failed — check terminal", text_color=C["neon_red"])
+                    self._append_terminal(f"\n[Report Studio] {r.stderr or r.stdout}\n")
             except Exception as e:
                 status_lbl.configure(text=f"Error: {e}", text_color=C["neon_red"])
 
@@ -2624,6 +2904,7 @@ class GhostStrikeApp(ctk.CTk):
             self._ai_mode_btn.configure(text="\U0001f916 AI CO-PILOT",
                 border_color=C["neon_purple"], text_color=C["neon_purple"])
             self._ai_agent_cb.configure(state="readonly")
+            self._ai_tier_cb.configure(state="readonly")
             try:
                 self.term_input.configure(
                     placeholder_text="Describe the task for the AI agent... (Enter to send)")
@@ -2640,6 +2921,7 @@ class GhostStrikeApp(ctk.CTk):
             self._ai_mode_btn.configure(text="\U0001f916 MANUAL",
                 border_color=C["text_dim"], text_color=C["text_dim"])
             self._ai_agent_cb.configure(state="disabled")
+            self._ai_tier_cb.configure(state="disabled")
             try:
                 self.term_input.configure(placeholder_text="Type here... (Enter to send)")
             except Exception:
@@ -2704,6 +2986,75 @@ class GhostStrikeApp(ctk.CTk):
         self.vault_master_key = result["key"] or ""  # "" means "use env var fallback"
         return True
 
+    def _request_module_approval(self, request: dict) -> bool:
+        """
+        approval_callback passed down to GhostStrikeRunner (via each agent's
+        autonomy_tier/approval_callback). Called from the AI agent's
+        background thread (see _run_ai_agent), but Tkinter widgets can only
+        be created/touched on the main thread -- so the dialog itself is
+        scheduled via self.after(0, ...) exactly like _append_terminal does,
+        and this method blocks the calling (background) thread on a
+        threading.Event until the operator answers.
+        """
+        import threading as _threading
+        done = _threading.Event()
+        result = {"approved": False}
+
+        def _build_dialog():
+            dlg = ctk.CTkToplevel(self)
+            dlg.title("GhostStrike — AI Module Approval")
+            dlg.geometry("480x300")
+            dlg.configure(fg_color=C["obsidian"])
+            dlg.resizable(False, False)
+            dlg.after(100, lambda w=dlg: (w.update_idletasks(), w.lift(), w.focus_force(), w.grab_set()))
+
+            ctk.CTkLabel(dlg, text="⚡  AI wants to run a module",
+                font=ctk.CTkFont(family="Consolas", size=13, weight="bold"),
+                text_color=C["neon_purple"]).pack(pady=(16, 4))
+
+            body = (
+                f"Module:   {request.get('module_name', '?')}\n"
+                f"Trust:    {request.get('trust', '?')}\n"
+                f"Params:   {request.get('params', {})}\n"
+            )
+            if request.get("reason"):
+                body += f"\nWhy approval is required:\n{request['reason']}"
+            ctk.CTkLabel(dlg, text=body,
+                font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_dim"],
+                justify="left", wraplength=440).pack(pady=(0, 12), padx=16, anchor="w")
+
+            def _answer(approved: bool, remember: bool = False):
+                result["approved"] = approved
+                if approved and remember:
+                    mod = request.get("module_name", "")
+                    current = os.environ.get("GS_APPROVED_MODULES", "")
+                    modules = set(m for m in current.split(",") if m)
+                    modules.add(mod)
+                    os.environ["GS_APPROVED_MODULES"] = ",".join(sorted(modules))
+                dlg.destroy()
+                done.set()
+
+            bf = ctk.CTkFrame(dlg, fg_color="transparent")
+            bf.pack(pady=16)
+            ctk.CTkButton(bf, text="APPROVE", width=100, height=30,
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                fg_color=C["neon_green"], hover_color=C["neon_purple"],
+                command=lambda: _answer(True, False)).pack(side="left", padx=(0, 6))
+            ctk.CTkButton(bf, text="APPROVE SESSION", width=140, height=30,
+                font=ctk.CTkFont(family="Consolas", size=11),
+                fg_color=C["card"], hover_color=C["hover"],
+                command=lambda: _answer(True, True)).pack(side="left", padx=(0, 6))
+            ctk.CTkButton(bf, text="DENY", width=100, height=30,
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                fg_color=C["neon_red"], hover_color=C["slate"],
+                command=lambda: _answer(False, False)).pack(side="left")
+
+            dlg.protocol("WM_DELETE_WINDOW", lambda: _answer(False, False))
+
+        self.after(0, _build_dialog)
+        done.wait()
+        return result["approved"]
+
     def _run_ai_agent(self, prompt: str):
         if not _AI_ENGINE_AVAILABLE:
             self._append_terminal("  [!] ai_engine is not available.\n")
@@ -2762,6 +3113,8 @@ class GhostStrikeApp(ctk.CTk):
                 output_callback=self._append_terminal,
                 max_iterations=30,
                 engagement_id=self.active_engagement or "",
+                autonomy_tier=self.ai_autonomy_tier,
+                approval_callback=self._request_module_approval,
             )
 
             self._append_terminal(f"  [key source: {provider.key_source}]\n")
