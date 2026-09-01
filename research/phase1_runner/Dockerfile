@@ -14,7 +14,7 @@ FROM kalilinux/kali-rolling
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap nikto python3 python3-pip python3-venv git curl ca-certificates \
-    ftp telnet openssh-client jq \
+    ftp telnet openssh-client jq sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # nuclei isn't in the default Kali metapackage set pulled above; install

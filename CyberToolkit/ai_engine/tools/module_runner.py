@@ -208,7 +208,7 @@ class GhostStrikeRunner:
 
     def run(
         self,
-        module_name: str,
+        module_name: str = "",
         params: Optional[Dict[str, str]] = None,
         timeout: int = 300,
         action: str = "run",
@@ -216,7 +216,12 @@ class GhostStrikeRunner:
         if action == "list_modules":
             return self.list_modules()
         if action == "describe":
+            if not module_name:
+                return "Error: action='describe' requires module_name."
             return self.describe_module(module_name)
+
+        if not module_name:
+            return "Error: module_name is required for action='run'."
 
         script_path = self._resolve(module_name)
         if not script_path:
@@ -320,8 +325,17 @@ class GhostStrikeRunner:
             stdout, stderr, code = result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
             return f"Error: '{module_name}' timed out after {timeout}s."
-        except FileNotFoundError:
-            return "Error: bash/WSL not found. Ensure WSL2 or Git Bash is installed."
+        except FileNotFoundError as exc:
+            # This used to assume every FileNotFoundError here meant "no
+            # WSL/Git Bash on Windows" -- wrong on native Linux, where the
+            # same exception fires if e.g. `sudo` isn't installed (a real,
+            # reproduced case: find_bash_invocation()'s native-Linux path
+            # defaults to prefixing sudo, and a minimal container without
+            # it raised exactly this). Report what was actually missing
+            # instead of a platform assumption that doesn't hold here.
+            return f"Error: could not execute module -- missing executable ({exc.filename or exc}). " \
+                   f"On Windows this usually means WSL2/Git Bash isn't installed; on Linux, check that " \
+                   f"the command GhostStrike tried to run ({cmd[0] if cmd else '?'}) is on PATH."
         except Exception as exc:
             return f"Error executing module: {exc}"
 

@@ -290,10 +290,14 @@ class GhostStrikeApp(ctk.CTk):
         # AI Co-Pilot mode
         self.ai_mode = False
         self.ai_agent_name = "Red Team"
-        # No GUI control picks this yet -- set GHOSTSTRIKE_AI_BACKEND=local
-        # (plus GHOSTSTRIKE_LOCAL_AI_URL if Ollama isn't on the default
-        # http://localhost:11434) before launching to use a local model.
+        # GHOSTSTRIKE_AI_BACKEND only sets the *initial* value now -- the
+        # backend picker in the terminal header (see _build_terminal_panel)
+        # lets the operator switch to Local (Ollama/LM Studio) at runtime.
+        # Set GHOSTSTRIKE_LOCAL_AI_URL too if Ollama isn't on the default
+        # http://localhost:11434.
         self.ai_backend = os.getenv("GHOSTSTRIKE_AI_BACKEND", "claude").strip().lower()
+        if self.ai_backend not in ("claude", "openai", "local"):
+            self.ai_backend = "claude"
         self.ai_autonomy_tier = "recommend"   # observe | recommend | operate
         self.vault_master_key = None   # session-only; never written to disk
         self._ai_running = False
@@ -658,6 +662,21 @@ class GhostStrikeApp(ctk.CTk):
             command=lambda v: setattr(self, "ai_agent_name", v))
         self._ai_agent_cb.pack(side="right", padx=(4, 2), pady=4)
         self._ai_agent_cb.configure(state="disabled")
+
+        # Backend picker -- Claude/OpenAI need a vault or env-var API key;
+        # Local (Ollama/LM Studio) needs neither, just a server reachable at
+        # GHOSTSTRIKE_LOCAL_AI_URL (default http://localhost:11434/v1).
+        _BACKEND_DISPLAY = {"claude": "Claude", "openai": "OpenAI", "local": "Local"}
+        self._ai_backend_from_display = {v: k for k, v in _BACKEND_DISPLAY.items()}
+        self._ai_backend_var = ctk.StringVar(value=_BACKEND_DISPLAY[self.ai_backend])
+        self._ai_backend_cb = ctk.CTkComboBox(th, values=["Claude", "OpenAI", "Local"],
+            variable=self._ai_backend_var, state="readonly", width=90, height=24,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=C["obsidian"], border_color=C["text_dim"],
+            button_color=C["slate"], dropdown_fg_color=C["slate"],
+            command=lambda v: setattr(self, "ai_backend", self._ai_backend_from_display[v]))
+        self._ai_backend_cb.pack(side="right", padx=(4, 2), pady=4)
+        self._ai_backend_cb.configure(state="disabled")
 
         # Autonomy tier -- Observe never executes, Recommend asks before every
         # module call, Operate only asks for HIGH_IMPACT/LAB_ONLY or anything
@@ -3141,32 +3160,38 @@ class GhostStrikeApp(ctk.CTk):
             return
         self.ai_mode = not self.ai_mode
         if self.ai_mode:
-            self._ai_mode_btn.configure(text="\U0001f916 AI CO-PILOT",
+            self._ai_mode_btn.configure(text="🤖 AI CO-PILOT",
                 border_color=C["neon_purple"], text_color=C["neon_purple"])
             self._ai_agent_cb.configure(state="readonly")
             self._ai_tier_cb.configure(state="readonly")
+            self._ai_backend_cb.configure(state="readonly")
             try:
                 self.term_input.configure(
                     placeholder_text="Describe the task for the AI agent... (Enter to send)")
             except Exception:
                 pass
             self._append_terminal(
-                f"\n  \U0001f916 AI CO-PILOT ENABLED — agent: {self.ai_agent_name}\n"
+                f"\n  🤖 AI CO-PILOT ENABLED — agent: {self.ai_agent_name}, "
+                f"backend: {self.ai_backend}\n"
                 f"  Every module call the agent makes still passes through the same "
                 f"policy/trust/scope gate as a manual run. Modules without confirmed "
                 f"gs_policy_gate wiring are refused, not attempted.\n"
             )
-            self._ensure_vault_key(prompt_if_missing=True)
+            # Local (Ollama/LM Studio) needs no API key -- skip the
+            # vault-unlock dialog for a credential it will never use.
+            if self.ai_backend != "local":
+                self._ensure_vault_key(prompt_if_missing=True)
         else:
-            self._ai_mode_btn.configure(text="\U0001f916 MANUAL",
+            self._ai_mode_btn.configure(text="🤖 MANUAL",
                 border_color=C["text_dim"], text_color=C["text_dim"])
             self._ai_agent_cb.configure(state="disabled")
             self._ai_tier_cb.configure(state="disabled")
+            self._ai_backend_cb.configure(state="disabled")
             try:
                 self.term_input.configure(placeholder_text="Type here... (Enter to send)")
             except Exception:
                 pass
-            self._append_terminal("\n  \U0001f916 AI CO-PILOT DISABLED — back to manual mode.\n")
+            self._append_terminal("\n  🤖 AI CO-PILOT DISABLED — back to manual mode.\n")
 
     def _ensure_vault_key(self, prompt_if_missing: bool = False) -> bool:
         """
