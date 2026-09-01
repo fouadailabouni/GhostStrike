@@ -77,6 +77,7 @@ def find_bash_invocation(
     wsl_path_env_keys: Optional[Set[str]] = None,
     path_arg_indices: Optional[Set[int]] = None,
     wsl_status_timeout: float = 5,
+    use_sudo: bool = True,
 ) -> List[str]:
     """
     Returns a subprocess.run()-ready argv list that invokes
@@ -95,10 +96,22 @@ def find_bash_invocation(
       `script_path` (e.g. when a module path is passed as an *argument*
       to a wrapper script like repro_runner.sh, rather than being
       `script_path` itself).
-
-    Every dynamic value -- script_path, each arg, each env var value --
-    goes through q() (shlex.quote) before being embedded in the command
-    string.
+    - `use_sudo`: whether the final "we're genuinely on native Linux, not
+      Windows-hosted at all" fallback branch prefixes the invocation with
+      `sudo`. Defaults to True to preserve existing behavior for real
+      module execution (raw sockets, packet crafting, and similar
+      commonly need root on Linux) -- but a caller invoking a harmless
+      helper script that never touches the network or filesystem
+      privilege boundary (e.g. a finding-metadata write, a SARIF export
+      staged in a temp dir) should pass False. Root has no bearing on the
+      WSL or Git Bash branches, both of which are Windows-hosted and
+      irrelevant to this flag; it only affects the last, real-Linux path.
+      Confirmed via real testing on Linux: an unconditional sudo here
+      broke a non-interactive finding-write call with no privilege need
+      (`FileNotFoundError: sudo` in a minimal container, and even where
+      sudo exists, forcing root on every invocation is a real
+      least-privilege violation for calls that were never meant to
+      elevate).
     """
     args = args or []
     env_vars = env_vars or {}
@@ -129,6 +142,6 @@ def find_bash_invocation(
     is_wsl_like = os.name != "nt"
     prefix = _build_env_prefix(env_vars, wsl_path_env_keys, is_wsl=is_wsl_like)
     astr = _build_args_str(args, path_arg_indices, is_wsl=is_wsl_like)
-    if is_wsl_like:
+    if is_wsl_like and use_sudo:
         return ["sudo", "bash", "-c", f'{prefix}bash {q(to_wsl_path(script_path))} {astr}']
     return ["bash", "-c", f'{prefix}bash {q(to_native_path(script_path))} {astr}']

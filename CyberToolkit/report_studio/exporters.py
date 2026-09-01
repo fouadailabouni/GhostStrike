@@ -319,6 +319,7 @@ def export_sarif(data: ReportData, out_path: Path) -> Path:
             env_vars={"GS_FINDINGS_DIR": str(tmp_findings_dir)},
             wsl_path_env_keys={"GS_FINDINGS_DIR"},
             path_arg_indices={0},
+            use_sudo=False,  # exporting an already-loaded finding list to SARIF never needs root
         )
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)

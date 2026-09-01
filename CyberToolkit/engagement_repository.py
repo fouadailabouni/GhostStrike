@@ -257,6 +257,7 @@ class EngagementRepository:
             env_vars=env_vars,
             wsl_path_env_keys={"GS_FINDINGS_DIR"},
             path_arg_indices={0},
+            use_sudo=False,  # a finding-metadata write never needs root
         )
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)

@@ -17,6 +17,7 @@ bash_scripts_for_pentest/metrics/attack_graph/
 bash_scripts_for_pentest/benchmarks/results/
 bash_scripts_for_pentest/test_results/
 bash_scripts_for_pentest/runs/
+research/results/
 bash_scripts_for_pentest/00-Framework-Core/ci_config/
 bash_scripts_for_pentest/00-Framework-Core/ci_reports/
 

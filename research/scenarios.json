@@ -1,0 +1,28 @@
+{
+  "phase": 1,
+  "note": "Scenarios use only lab targets already running under bash_scripts_for_pentest/19-Lab-Environment/pentest_lab/docker-compose.yml, reached from the ghoststrike-phase1-runner container on the pentest_lab_pentest_network. No scenario here is fabricated data -- each is a real, reachable service.",
+  "scenarios": [
+    {"id": "web-dvwa-sqli", "category": "web", "target": "dvwa", "port": 80,
+     "description": "DVWA - SQL injection and general web vulnerability discovery"},
+    {"id": "web-juiceshop", "category": "web", "target": "juiceshop", "port": 3000,
+     "description": "OWASP Juice Shop - modern web app (SPA/API) vulnerability discovery"},
+    {"id": "web-nodegoat", "category": "web", "target": "nodegoat", "port": 4000,
+     "description": "OWASP NodeGoat - Node.js app vulnerability discovery"},
+    {"id": "web-webgoat", "category": "web", "target": "webgoat", "port": 8080,
+     "description": "OWASP WebGoat - Java web app vulnerability discovery"},
+    {"id": "web-wordpress", "category": "web", "target": "wordpress", "port": 80,
+     "description": "WordPress instance - version/plugin fingerprinting and known-CVE discovery"},
+    {"id": "net-mysql", "category": "network", "target": "mysql", "port": 3306,
+     "description": "MySQL 5.7 direct network exposure",
+     "note": "Replaces an originally-planned distccd (port 3632) scenario: nmap confirmed that port, and AJP (8009), on the vulnerable_services container are mapped in docker-compose.yml but nothing is actually listening behind them -- the container is a bare ubuntu:20.04 with only Apache configured, not the fully-populated Metasploitable-like set its comment describes. Documented here rather than silently swapped."},
+    {"id": "net-mongodb", "category": "network", "target": "mongodb", "port": 27017,
+     "description": "MongoDB 4.4 direct network exposure",
+     "note": "Replaces an originally-planned AJP/Ghostcat (port 8009) scenario -- see net-mysql's note; same root cause."},
+    {"id": "net-ssh-weak", "category": "network", "target": "ssh_server", "port": 22,
+     "description": "SSH service - weak/default credential and configuration exposure"},
+    {"id": "net-ftp-anon", "category": "network", "target": "ftp_server", "port": 21,
+     "description": "FTP service - anonymous access and configuration exposure"},
+    {"id": "net-telnet", "category": "network", "target": "telnet_server", "port": 23,
+     "description": "Telnet service - cleartext protocol exposure"}
+  ]
+}
