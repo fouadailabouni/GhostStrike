@@ -97,6 +97,9 @@ jobs:
           echo "No pytest test files found, skipping"
         fi
 
+    - name: README stats match registry.json (no silent drift)
+      run: python3 tools/verify_readme_stats.py
+
   test:
     runs-on: ubuntu-latest
     name: Run Tests

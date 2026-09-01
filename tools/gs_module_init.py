@@ -2,10 +2,10 @@
 """
 GhostStrike Module SDK -- scaffolding generator.
 
-Standalone today (`python3 tools/gs_module_init.py ...`); intended to
-become `gs module init` once the gs CLI exists (see docs/ROADMAP.md) --
-at that point the CLI subcommand should just import and call
-create_module() below rather than reimplementing this.
+Runnable standalone (`python3 tools/gs_module_init.py ...`) or via
+`gs module init` (bin/gs -> CyberToolkit/gs_cli.py's cmd_module_init,
+which imports and calls create_module() below directly rather than
+reimplementing it -- one implementation either way).
 
 Usage:
     python3 tools/gs_module_init.py <category>/<module-slug> --name "Human Name" \\

@@ -290,7 +290,10 @@ class GhostStrikeApp(ctk.CTk):
         # AI Co-Pilot mode
         self.ai_mode = False
         self.ai_agent_name = "Red Team"
-        self.ai_backend = "claude"
+        # No GUI control picks this yet -- set GHOSTSTRIKE_AI_BACKEND=local
+        # (plus GHOSTSTRIKE_LOCAL_AI_URL if Ollama isn't on the default
+        # http://localhost:11434) before launching to use a local model.
+        self.ai_backend = os.getenv("GHOSTSTRIKE_AI_BACKEND", "claude").strip().lower()
         self.ai_autonomy_tier = "recommend"   # observe | recommend | operate
         self.vault_master_key = None   # session-only; never written to disk
         self._ai_running = False

@@ -2,8 +2,10 @@
 """
 GhostStrike Module SDK -- module validator.
 
-Standalone today (`python3 tools/gs_module_validate.py <script.sh>`);
-intended to become `gs module validate` once the gs CLI exists.
+Runnable standalone (`python3 tools/gs_module_validate.py <script.sh>`)
+or via `gs module validate` (bin/gs -> CyberToolkit/gs_cli.py's
+cmd_module_validate, which imports and calls validate_module() below
+directly rather than reimplementing it).
 
 Checks, each independently reported (this is a checklist, not a single
 pass/fail bit):
