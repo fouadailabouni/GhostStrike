@@ -59,8 +59,9 @@ royalty-free license to:
      authorized security-testing purposes;
   c. modify the Software and create Derivative Works, subject to
      Section 3;
-  d. distribute unmodified copies of the Software, provided this
-     license file and all copyright notices are preserved intact.
+  d. distribute unmodified copies of the Software solely on a
+     non-commercial basis, provided this licence file and all
+     copyright notices are preserved intact;
 
 ============================================================
 3. COPYLEFT: MODIFIED VERSIONS MUST REMAIN OPEN
@@ -101,7 +102,11 @@ an OEM License from the Copyright Owner:
   d. use the Software internally within a for-profit organization's
      paid consulting or managed-security-testing engagements delivered
      to clients, where the Software is a material part of the
-     deliverable, without an OEM License covering that use.
+     deliverable, without an OEM License covering that use;
+  e. sell, offer for sale, sublicense, rent, lease, or otherwise
+     commercially distribute the Software or any Derivative Work,
+     whether standalone or as part of another offering, except under
+     a separate written Commercial License from the Copyright Owner.
 
 Personal use, internal non-revenue-generating use, academic use,
 authorized individual penetration-testing engagements conducted by an
