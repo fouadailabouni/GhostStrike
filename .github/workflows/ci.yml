@@ -32,12 +32,17 @@ jobs:
 
     - name: Check for hardcoded secret literals
       run: |
-        # Matches VAR="literal", not VAR="$other_var" -- the naive version of
-        # this check (no assignment requirement) used to flag nearly every
-        # file, since a pentest tool legitimately has "password"/"token" in
-        # flag names and its own attack payloads constantly.
-        if grep -r -i -E "(password|passwd|secret|token|api_key)\s*=\s*['\"][^'\"\$][^'\"]*['\"]" \
-            --include="*.sh" bash_scripts_for_pentest | grep -v -i "AUTHORIZATION DISCLAIMER"; then
+        # Matches VAR="literal" at a statement boundary, not VAR="$other_var"
+        # and not a keyword appearing mid-string (e.g. a SQLi payload like
+        # "...&password=' or '1'='1" -- "password" there isn't preceded by a
+        # statement boundary, it's embedded in a larger quoted string one
+        # already-open-quote deep). Also excludes well-known placeholder
+        # values (SAMPLE_, CHANGEME, etc.) so a module that fills in a
+        # "no real value found" fallback string doesn't trip this.
+        if grep -r -i -E "(^|[[:space:];{])(password|passwd|secret|token|api_key)\s*=\s*['\"][^'\"\$][^'\"]*['\"]" \
+            --include="*.sh" bash_scripts_for_pentest \
+            | grep -v -i "AUTHORIZATION DISCLAIMER" \
+            | grep -v -iE "sample_|changeme|your_|example_|placeholder|dummy_"; then
           echo "Potential hardcoded secret literal found"
           exit 1
         fi
