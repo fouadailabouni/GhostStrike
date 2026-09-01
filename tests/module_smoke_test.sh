@@ -55,6 +55,7 @@ RESULTS_TSV="${SCRIPT_DIR}/module_smoke_test_results.tsv"
 NO_TARGET_REQUIRED=(
     "00-Framework-Core/authorization_framework.sh"
     "00-Framework-Core/ci_linting_framework.sh"
+    "00-Framework-Core/framework_tester.sh"
     "00-Framework-Core/json_output_framework.sh"
     "00-Framework-Core/mitre_attack_framework.sh"
     "00-Framework-Core/pentest_roadmap.sh"
@@ -72,6 +73,7 @@ NO_TARGET_REQUIRED=(
     "11-Cloud-Security/azure_security_audit.sh"
     "11-Cloud-Security/gcp_security_audit.sh"
     "13-Post-Exploitation/file_transfer.sh"
+    "13-Post-Exploitation/privilege_escalation_linux.sh"
     "13-Post-Exploitation/privilege_escalation_windows.sh"
     "14-Reporting-Tools/pentest_report_generator.sh"
     "19-Lab-Environment/pentest_lab/scripts/backup_lab.sh"
@@ -85,14 +87,28 @@ NO_TARGET_REQUIRED=(
 # just takes longer than the default 5s budget. They still get a hard bound
 # (SLOW_TIMEOUT_SECS) so a genuine infinite hang is still caught.
 SLOW_LOCAL_AUDIT=(
+    "00-Framework-Core/framework_tester.sh"
     "01-Network-Security/netdiscover_automation.sh"
     "01-Network-Security/system_config_audit.sh"
+    "08-System-Security/cis_linux_manual_checks.sh"
     "08-System-Security/system_config_audit.sh"
     "09-Container-Security/container_security_scanner.sh"
     "13-Post-Exploitation/privilege_escalation_checker.sh"
     "13-Post-Exploitation/privilege_escalation_linux.sh"
     "13-Post-Exploitation/privilege_escalation_windows.sh"
     "policy_validator.sh"
+)
+
+# ── Modules whose real (non-dry-run) default behavior downloads and
+# executes a full third-party tool from the internet (LinPEAS, etc.) ──────
+# That's fundamentally different from "slow local work" -- it depends on
+# network reachability/speed this harness has no business requiring, and
+# it's exactly the kind of real attack/enumeration logic the smoke test's
+# own header says it does NOT execute. These scripts already support
+# GS_DRY_RUN as a first-class fast-path, so the no-args check exercises
+# that instead of the real download+execute path.
+DRY_RUN_FOR_NOARGS=(
+    "13-Post-Exploitation/privilege_escalation_linux.sh"
 )
 
 _gs_in_list() {
@@ -152,7 +168,11 @@ for script in "${scripts[@]}"; do
 
     noargs_out=""
     noargs_rc=0
-    noargs_out=$(timeout "${this_timeout}" bash "${script}" </dev/null 2>&1)
+    if _gs_in_list "${rel}" "${DRY_RUN_FOR_NOARGS[@]}"; then
+        noargs_out=$(GS_DRY_RUN=true timeout "${this_timeout}" bash "${script}" </dev/null 2>&1)
+    else
+        noargs_out=$(timeout "${this_timeout}" bash "${script}" </dev/null 2>&1)
+    fi
     noargs_rc=$?
 
     noargs_result="PASS"
