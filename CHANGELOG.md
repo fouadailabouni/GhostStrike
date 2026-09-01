@@ -3,12 +3,10 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-No tagged releases yet — this file starts tracking from the current
-pre-release development on `main`. The first tagged release should be
-`3.0.0`, matching the version already carried in `CyberToolkit/ghoststrike.py`'s
-`APP_VERSION` and the project's `[PHANTOM]` codename.
+## [3.0.0] — 2026-09-01 — PHANTOM
 
-## [Unreleased]
+First tagged release, matching the version already carried in
+`CyberToolkit/ghoststrike.py`'s `APP_VERSION`.
 
 ### Added
 - Engagement OS foundation: attack graph builder, cross-run finding
@@ -50,13 +48,39 @@ pre-release development on `main`. The first tagged release should be
   statements, `--dry-run`/`GS_DRY_RUN` flags accepted but never wired to
   skip real work, and cloud-CLI (`az`/`gcloud`) cold-start latency in the
   module smoke test.
+- Fail-closed policy engine: `gs_policy_check_trust`'s fallback (used only
+  when `policy.yaml` is missing/unreadable) now blocks every trust level
+  outside `lab`, instead of silently allowing `SAFE_ENUM`/`VALIDATION`
+  through with no policy file present.
+- AI redaction gap: extracted the fail-closed secret-redaction logic into
+  a shared `ai_engine/redaction.py` and wired it into `js_analyzer.py`,
+  which previously shipped extracted JS secrets to the model unredacted.
+- Shell-injection hardening across `osint_orchestrator.py`, `code_runner.py`,
+  `network_capture.py`, and `shell_executor.py` — converted `shell=True` +
+  f-string command construction to list-argv or `shlex.quote()`-wrapped
+  values.
+- `engagement_repository.py`'s `update_finding()` now enforces a column
+  allow-list on its SQLite branch, closing a SQL-injection-shaped gap where
+  `fields` keys were interpolated directly into an `UPDATE` statement.
+- `gs_finding_new()` was silently stripping the schema-required `impact`/
+  `remediation` fields from every new finding (a stale hardcoded field
+  list, with the validation failure swallowed by a trailing `|| true`).
+- Nikto import/dedup: distinct findings sharing a URI (missing CSP, missing
+  HSTS, outdated Apache, ...) were producing identical titles and getting
+  merged as duplicates; titles now embed the item's own description and
+  dedup excludes purely-numeric tokens (IP octets, ports) from
+  title-similarity comparisons.
+- Least-privilege: `find_bash_invocation()` no longer forces `sudo` for
+  callers that never need root (finding-metadata writes, SARIF export).
+- CRLF corruption in `lib/reproducibility.sh` that broke it outright on
+  real Linux, undetected until this release's test pass actually exercised
+  the script.
 
 ### Known gaps (tracked, not yet fixed)
 - Scope-check IDNA/punycode equivalence and wildcard exclusion support
   (see adversarial tests above).
 - Ruff/Bandit findings from the first-ever run of each tool are not yet
   triaged; both currently run informationally in CI.
-- `CyberToolkit/engagement_repository.py`'s `update_finding()` builds an
-  `UPDATE` statement with column names interpolated via f-string (values
-  are correctly parameterized) — needs confirmation that `fields` keys can
-  never originate from untrusted input before this can be marked safe.
+- GUI has no control to select the local/Ollama AI backend yet — set the
+  `GHOSTSTRIKE_AI_BACKEND=local` environment variable before launch as a
+  workaround.
