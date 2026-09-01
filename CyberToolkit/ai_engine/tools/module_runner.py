@@ -39,13 +39,16 @@ from __future__ import annotations
 
 import csv
 import os
-import re
-import shlex
 import subprocess
 import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+
+# RedactionUnavailableError is now imported from ai_engine/redaction.py
+# (see the import block below) -- re-used under the same name so
+# existing `except RedactionUnavailableError` callers elsewhere in this
+# file keep working unchanged.
 # policy_query.py already parses policy.yaml's per-module
 # require_explicit_approval/reason fields for lib/policy_engine.sh -- reused
 # here as-is rather than re-parsing the YAML a second way, so there is one
@@ -61,6 +64,24 @@ try:
 except Exception as _exc:  # pragma: no cover - PyYAML missing, policy.yaml unreadable, etc.
     _policy_query = None
     _POLICY_QUERY_IMPORT_ERROR = str(_exc)
+
+# shell_command_builder.py lives at CyberToolkit/ -- the same safely-quoted
+# (shlex.quote throughout) WSL/Git-Bash/native-bash resolver ghoststrike.py
+# uses, so there is exactly one implementation instead of two that could
+# (and did) drift to different safety levels.
+_cybertoolkit_dir = str(Path(__file__).resolve().parent.parent.parent)
+if _cybertoolkit_dir not in sys.path:
+    sys.path.insert(0, _cybertoolkit_dir)
+from shell_command_builder import find_bash_invocation as _find_bash_invocation
+
+# redaction.py lives at CyberToolkit/ai_engine/ -- the shared, fail-closed
+# redact() every AI-engine tool that sends text to an external LLM should
+# use, so there is exactly one redaction implementation instead of one per
+# tool that could (and did -- js_analyzer.py had none) drift.
+_ai_engine_dir = str(Path(__file__).resolve().parent.parent)
+if _ai_engine_dir not in sys.path:
+    sys.path.insert(0, _ai_engine_dir)
+from redaction import redact as _shared_redact, RedactionUnavailableError
 
 TOOL_SCHEMA: Dict = {
     "type": "function",
@@ -235,7 +256,16 @@ class GhostStrikeRunner:
         # to attempt a module that *does* have real bash-side enforcement.
         module_basename = Path(rel).name
         approval_required, approval_reason = self._module_requires_explicit_approval(module_basename)
-        needs_approval = approval_required or trust in ("HIGH_IMPACT", "LAB_ONLY")
+        # Allowlist, not a denylist: only a *confirmed* SAFE_ENUM/VALIDATION
+        # trust level skips approval in Operate mode. `trust` resolves to ""
+        # when MODULE_INVENTORY.csv has no row (or a blank trust_level) for
+        # this module -- previously `"" in ("HIGH_IMPACT", "LAB_ONLY")` was
+        # False, so an unclassified module (which could in reality BE
+        # HIGH_IMPACT/LAB_ONLY, simply not yet catalogued) was silently
+        # treated as safe and skipped approval entirely. An unrecognized
+        # value now requires approval the same as a known-dangerous one --
+        # "couldn't determine the trust level" must not read as "low risk."
+        needs_approval = approval_required or trust not in ("SAFE_ENUM", "VALIDATION")
 
         if self._autonomy_tier == "observe":
             return (
@@ -311,7 +341,10 @@ class GhostStrikeRunner:
             if code != 0:
                 output += f"\n[EXIT CODE: {code}]"
 
-        output = self._redact(output)
+        try:
+            output = self._redact(output)
+        except RedactionUnavailableError as exc:
+            return f"BLOCKED: {exc}"
 
         if self._output_cb:
             self._output_cb(output)
@@ -391,16 +424,27 @@ class GhostStrikeRunner:
         """(required, reason) per policy.yaml's modules: block -- the same
         data lib/policy_engine.sh's gs_policy_check_module reads via this
         same policy_query.py, so bash enforcement and AI-side prompting can
-        never disagree about which modules need it."""
+        never disagree about which modules need it.
+
+        Fails closed: if policy.yaml can't be read at all (missing,
+        unparseable, or the policy_query import itself failed -- e.g.
+        PyYAML not installed), this cannot determine whether the module
+        needs explicit approval, and previously defaulted to (False, "") --
+        "couldn't check, so no approval needed." That silently dropped the
+        one guard meant to catch a SAFE_ENUM/VALIDATION-trust module that
+        policy.yaml separately flags as sensitive despite its low CSV trust
+        level. Now it defaults to requiring approval instead: strictly
+        safer (at worst, an extra confirmation prompt), never a silent
+        bypass."""
         if _policy_query is None:
-            return False, ""
+            return True, "policy.yaml could not be parsed (policy_query module unavailable) -- failing closed"
         policy_path = self._base / "policy.yaml"
         if not policy_path.exists():
-            return False, ""
+            return True, "policy.yaml not found -- cannot confirm this module doesn't require approval, failing closed"
         try:
             policy = _policy_query.load_policy(str(policy_path))
-        except Exception:
-            return False, ""
+        except Exception as exc:
+            return True, f"policy.yaml could not be parsed ({exc}) -- failing closed"
         entry = (policy.get("modules", {}) or {}).get(module_basename)
         if entry and entry.get("require_explicit_approval"):
             return True, entry.get("reason", "")
@@ -464,44 +508,12 @@ class GhostStrikeRunner:
         return args
 
     def _redact(self, text: str) -> str:
-        """Best-effort credential/secret redaction before output reaches the LLM
-        (and therefore potentially an external API). Reuses lib/common.sh's
-        gs_redact so there is exactly one redaction implementation, shared with
-        every bash caller, instead of a second pattern set that could drift."""
-        if not text:
-            return text
-        common_sh = str(self._base / "lib" / "common.sh")
-        common_wsl = self._to_wsl_path(common_sh)
-
-        # Same WSL -> Git Bash -> native fallback chain as everywhere else in
-        # this file, not just WSL -- a single-path implementation would
-        # silently fail open (no redaction, but still return real output) on
-        # any setup that resolves bash a different way. Tried in order;
-        # first one that actually runs wins.
-        candidates: List[List[str]] = [
-            ["wsl", "bash", "-c", f'source "{common_wsl}" >/dev/null 2>&1; gs_redact']
-        ]
-        for gb in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"):
-            if os.path.exists(gb):
-                candidates.append([gb, "-c", f'source "{common_sh}" >/dev/null 2>&1; gs_redact'])
-        if os.name != "nt":
-            candidates.append(["bash", "-c", f'source "{common_sh}" >/dev/null 2>&1; gs_redact'])
-
-        for cmd in candidates:
-            try:
-                result = subprocess.run(
-                    cmd, input=text, capture_output=True, text=True, timeout=10,
-                )
-                if result.returncode == 0 and result.stdout:
-                    return result.stdout
-            except Exception:
-                continue
-        return text  # Redaction is best-effort; never let it block returning real output.
-
-    @staticmethod
-    def _to_wsl_path(path: str) -> str:
-        norm = path.replace("\\", "/")
-        return re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}", norm)
+        """Credential/secret redaction before output reaches the LLM (and
+        therefore potentially an external API). Delegates to the shared
+        ai_engine/redaction.py implementation -- see that module's
+        docstring for why this fails CLOSED rather than best-effort.
+        """
+        return _shared_redact(text, self._base)
 
     def _fallback_command_builder(self, path: str, args: List[str]) -> List[str]:
         """
@@ -521,27 +533,10 @@ class GhostStrikeRunner:
         which doesn't forward arbitrary Windows env vars by default) is what
         makes that actually cross the WSL boundary.
         """
-        wsl_path = self._to_wsl_path(path)
-        astr = " ".join(shlex.quote(a) for a in args)
-
-        env_prefix = ""
-        for var in ("GS_ENGAGEMENT_ID", "GS_ENVIRONMENT", "GS_SCOPE_FILE"):
-            val = os.environ.get(var, "")
-            if val:
-                if var == "GS_SCOPE_FILE":
-                    val = self._to_wsl_path(val)
-                env_prefix += f'export {var}={shlex.quote(val)}; '
-
-        inner = f'{env_prefix}bash "{wsl_path}" {astr}'
-        try:
-            r = subprocess.run(["wsl", "--status"], capture_output=True, timeout=5)
-            if r.returncode == 0:
-                return ["wsl", "bash", "-c", inner]
-        except Exception:
-            pass
-        for gb in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"):
-            if os.path.exists(gb):
-                return [gb, "-c", f'{env_prefix}bash "{path}" {astr}']
-        if os.name != "nt":
-            return ["bash", "-c", inner]
-        return ["bash", "-c", inner]
+        env_vars = {
+            var: os.environ.get(var, "")
+            for var in ("GS_ENGAGEMENT_ID", "GS_ENVIRONMENT", "GS_SCOPE_FILE")
+        }
+        return _find_bash_invocation(
+            path, args, env_vars, wsl_path_env_keys={"GS_SCOPE_FILE"},
+        )

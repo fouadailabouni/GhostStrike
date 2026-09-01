@@ -1,18 +1,29 @@
 """
 GhostStrike AI Engine — Model Provider
 =======================================
-Unified gateway over Anthropic Claude and OpenAI GPT-4o.
-Operators set the active back-end through settings.json → ai_engine.backend.
+Unified gateway over Anthropic Claude, OpenAI GPT-4o, and a local,
+OpenAI-API-compatible backend (Ollama, LM Studio, or any other server
+speaking that protocol). Operators set the active back-end through
+settings.json -> ai_engine.backend.
 
 Supported back-ends
 -------------------
-  claude  – Anthropic Claude 3.x / 4.x  (vault id "ai_anthropic_api_key", falls back to ANTHROPIC_API_KEY)
-  openai  – OpenAI GPT-4o / o1 family   (vault id "ai_openai_api_key", falls back to OPENAI_API_KEY)
+  claude  - Anthropic Claude 3.x / 4.x  (vault id "ai_anthropic_api_key", falls back to ANTHROPIC_API_KEY)
+  openai  - OpenAI GPT-4o / o1 family   (vault id "ai_openai_api_key", falls back to OPENAI_API_KEY)
+  local   - Any OpenAI-API-compatible local server (Ollama's /v1 endpoint,
+            LM Studio, etc.) -- no cloud credential required. Cloud AI
+            should never be mandatory; this backend is how GhostStrike stays
+            usable with zero outbound network dependency for the AI Co-Pilot.
 
 API keys are resolved from GhostStrike's hardened credential vault
 (lib/vault.sh) first, not a plaintext env var or config file the way the
 original PhantomOps source did this. The env var remains a fallback so
 operators who haven't migrated a key into the vault yet aren't blocked.
+
+Offline mode: if GHOSTSTRIKE_OFFLINE is set to a truthy value, constructing
+a "claude" or "openai" backend raises immediately rather than silently
+making an outbound call -- see the OFFLINE_ENV_VAR check in _build_client().
+Only "local" is permitted in offline mode.
 
 Copyright (C) 2026 Fouad Ailabouni. All rights reserved.
 """
@@ -31,22 +42,51 @@ from typing import Any, Dict, Generator, List, Optional
 class ModelBackend(str, Enum):
     CLAUDE = "claude"
     OPENAI = "openai"
+    LOCAL = "local"
 
 
+# llama3.1, not the newer llama3.2, is the default local model: GhostStrike's
+# AI Co-Pilot is tool-calling-heavy (agents drive modules via tool_calls),
+# and llama3.1 has the most reliable native tool-calling support of the
+# locally-available models this was verified against (gemma2, llama3.1,
+# llama3.2, qwen2.5 -- all four work as model_name overrides in
+# settings.json; gemma2 in particular has weaker tool-calling support and
+# is better suited to plain completions than agent-driven module calls).
 _DEFAULT_MODELS: Dict[ModelBackend, str] = {
     ModelBackend.CLAUDE: "claude-sonnet-4-6",
     ModelBackend.OPENAI: "gpt-4o",
+    # Ollama requires the exact pulled tag, not a bare model family name --
+    # verified against a real local Ollama server's /api/tags response
+    # (`ollama list`): the four available models are gemma2:9b, llama3.1:8b,
+    # llama3.2:3b, qwen2.5:7b. Confirmed via that same API response that
+    # only llama3.1/llama3.2/qwen2.5 report "tools" in their capabilities
+    # list -- gemma2 reports only "completion", matching the reasoning
+    # below for why it isn't the default.
+    ModelBackend.LOCAL: "llama3.1:8b",
 }
 
 _VAULT_CREDENTIAL_IDS: Dict[ModelBackend, str] = {
     ModelBackend.CLAUDE: "ai_anthropic_api_key",
     ModelBackend.OPENAI: "ai_openai_api_key",
+    ModelBackend.LOCAL: "ai_local_api_key",
 }
 
 _ENV_VAR_NAMES: Dict[ModelBackend, str] = {
     ModelBackend.CLAUDE: "ANTHROPIC_API_KEY",
     ModelBackend.OPENAI: "OPENAI_API_KEY",
+    ModelBackend.LOCAL: "GHOSTSTRIKE_LOCAL_AI_KEY",
 }
+
+# Cloud backends -- exactly the ones offline mode refuses to build.
+_CLOUD_BACKENDS = {ModelBackend.CLAUDE, ModelBackend.OPENAI}
+
+OFFLINE_ENV_VAR = "GHOSTSTRIKE_OFFLINE"
+LOCAL_BASE_URL_ENV_VAR = "GHOSTSTRIKE_LOCAL_AI_URL"
+DEFAULT_LOCAL_BASE_URL = "http://localhost:11434/v1"  # Ollama's OpenAI-compatible endpoint
+
+
+def is_offline_mode() -> bool:
+    return os.getenv(OFFLINE_ENV_VAR, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _bash_scripts_dir() -> Path:
@@ -119,15 +159,32 @@ class GhostStrikeModelProvider:
         vault_master_key: Optional[str] = None,
         temperature: float = 0.2,
         max_tokens: int = 8192,
+        local_base_url: Optional[str] = None,
     ) -> None:
         self.backend     = ModelBackend(backend)
+
+        if is_offline_mode() and self.backend in _CLOUD_BACKENDS:
+            raise RuntimeError(
+                f"{OFFLINE_ENV_VAR} is set -- refusing to build a '{self.backend.value}' "
+                f"(cloud) backend. Offline mode only permits ModelBackend.LOCAL. "
+                f"Unset {OFFLINE_ENV_VAR}, or configure a local model (Ollama/LM Studio)."
+            )
+
         self.model_name  = model_name or _DEFAULT_MODELS[self.backend]
         self.temperature = temperature
         self.max_tokens  = max_tokens
         self.key_source  = "explicit"
+        self.local_base_url = local_base_url or os.getenv(LOCAL_BASE_URL_ENV_VAR, DEFAULT_LOCAL_BASE_URL)
 
         if api_key:
             self._api_key = api_key
+        elif self.backend == ModelBackend.LOCAL:
+            # Local OpenAI-compatible servers (Ollama, LM Studio) typically
+            # don't require a real key at all -- don't force vault/env
+            # lookups that would just fail and log noise for the common
+            # case of "no auth configured, and none needed."
+            self._api_key = os.getenv(_ENV_VAR_NAMES[self.backend], "")
+            self.key_source = "env" if self._api_key else "none"
         else:
             # 1. Try the hardened vault first (needs the session's vault master
             #    key -- normally supplied by the GUI, or GS_VAULT_KEY in the
@@ -148,6 +205,15 @@ class GhostStrikeModelProvider:
     # ── Client construction ───────────────────────────────────────────────
 
     def _build_client(self) -> Any:
+        if self.backend == ModelBackend.LOCAL:
+            # No API key requirement: most local OpenAI-compatible servers
+            # (Ollama, LM Studio with auth off) accept any string, or none.
+            try:
+                from openai import OpenAI
+                return OpenAI(api_key=self._api_key or "not-needed", base_url=self.local_base_url)
+            except ImportError:
+                raise RuntimeError("Run: pip install openai  (also used as the client for local OpenAI-compatible servers)")
+
         if not self._api_key:
             key_name = _ENV_VAR_NAMES[self.backend]
             vault_id = _VAULT_CREDENTIAL_IDS[self.backend]
@@ -449,6 +515,7 @@ class GhostStrikeModelProvider:
             vault_master_key=vault_master_key,
             temperature=float(cfg.get("temperature", 0.2)),
             max_tokens=int(cfg.get("max_tokens", 8192)),
+            local_base_url=cfg.get("local_base_url"),
         )
 
     def label(self) -> str:

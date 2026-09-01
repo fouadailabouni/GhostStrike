@@ -166,10 +166,60 @@ Findings grouped by affected component. Fix the CRITICAL/HIGH items first.
 {% endfor %}
 """)
 
+_REMEDIATION_TEMPLATE = Template("""\
+# Remediation Report — {{ data.engagement_id }}
+
+Fixes only -- no reproduction detail, no raw evidence. For tracking what
+needs to change, not how it was found.
+
+{%- set actionable = data.findings_sorted() | selectattr('remediation') | list %}
+{%- if actionable %}
+
+| Severity | Finding | Remediation |
+|----------|---------|-------------|
+{%- for f in actionable %}
+| {{ f.get('severity', 'INFO') }} | {{ f.get('title', 'Untitled') }} | {{ f.get('remediation', '') | replace('\\n', ' ') }} |
+{%- endfor %}
+{%- else %}
+_No findings with recorded remediation guidance yet._
+{%- endif %}
+""")
+
+_RETEST_TEMPLATE = Template("""\
+# Retest Report — {{ data.engagement_id }}
+
+Before/after status for every finding that has gone through the retest
+workflow (`gs retest start` / `gs retest resolve`).
+
+{%- if data.retests %}
+
+| Finding | Original Status | Result | Retested At | Notes |
+|---------|-----------------|--------|-------------|-------|
+{%- for r in data.retests %}
+| {{ r.get('finding_id', '') }} | {{ r.get('original_status', '') }} | {{ r.get('result') or 'pending' }} | {{ r.get('retested_at', '') }} | {{ r.get('notes', '') }} |
+{%- endfor %}
+
+## Still Vulnerable
+
+{%- set still_vuln = data.retests | selectattr('result', 'equalto', 'still_vulnerable') | list %}
+{%- if still_vuln %}
+{%- for r in still_vuln %}
+- {{ r.get('finding_id', '') }} -- {{ r.get('notes', 'No notes recorded.') }}
+{%- endfor %}
+{%- else %}
+_No findings remain vulnerable after retest._
+{%- endif %}
+{%- else %}
+_No retests have been recorded for this engagement yet. Run `gs retest start <finding_id>` to begin one._
+{%- endif %}
+""")
+
 _VARIANTS = {
     "executive": _EXECUTIVE_TEMPLATE,
     "technical": _TECHNICAL_TEMPLATE,
     "developer": _DEVELOPER_TEMPLATE,
+    "remediation": _REMEDIATION_TEMPLATE,
+    "retest": _RETEST_TEMPLATE,
 }
 
 

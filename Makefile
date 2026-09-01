@@ -83,7 +83,8 @@ benchmark:
 # ── Python install ───────────────────────────────────────────
 install:
 	@echo "Installing Python dependencies..."
-	pip install -r $(CYTOOLKIT)/requirements.txt
+	@pip install -r $(CYTOOLKIT)/requirements.txt || \
+		pip install --break-system-packages -r $(CYTOOLKIT)/requirements.txt
 
 # ── GUI launcher ────────────────────────────────────────────
 gui:

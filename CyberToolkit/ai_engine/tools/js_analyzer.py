@@ -11,7 +11,19 @@ Copyright (C) 2026 Fouad Ailabouni. All rights reserved.
 from __future__ import annotations
 
 import re
+import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Set
+
+# redaction.py lives at CyberToolkit/ai_engine/ -- the shared, fail-closed
+# redact() every AI-engine tool that sends text to an external LLM must
+# use. token_hits below are real secrets extracted from scanned JavaScript
+# (API keys, tokens, passwords) -- sending them to the LLM unredacted was
+# exactly the gap this import closes.
+_ai_engine_dir = str(Path(__file__).resolve().parent.parent)
+if _ai_engine_dir not in sys.path:
+    sys.path.insert(0, _ai_engine_dir)
+from redaction import redact as _redact, RedactionUnavailableError
 
 TOOL_SCHEMA: Dict = {
     "type": "function",
@@ -121,6 +133,30 @@ class JsAnalyzer:
                 for match in re.findall(pat, content):
                     param_hits.add(match)
 
+
+        # token_hits are real secrets pulled out of scanned JavaScript
+        # (API keys, tokens, passwords) -- redact before they reach the
+        # returned string, which is what the LLM actually sees. Fails
+        # closed, matching module_runner.py's BLOCKED convention: if
+        # redaction is unavailable, withhold the whole result rather than
+        # send secrets unredacted or silently drop just this section.
+        if token_hits:
+            try:
+                # _TOKEN_PATTERNS captures only the bare secret value
+                # (a single regex group), not "key=value" -- gs_redact's
+                # patterns only fire on a key=/key: prefix, so a bare
+                # value passed through untouched is a silent no-op, not
+                # an actual redaction. Wrap it in a synthetic key=value
+                # context gs_redact will actually match, then pull the
+                # redacted value back out.
+                redacted = []
+                for tok in token_hits:
+                    result = _redact(f"secret={tok}")
+                    redacted.append(result.split("=", 1)[1].strip() if "=" in result else result.strip())
+                token_hits = redacted
+            except RedactionUnavailableError as exc:
+                return f"BLOCKED: {exc}"
+
         lines = [
             f"=== JS Surface Analysis: {url} ===",
             f"Scripts analysed: {len(script_urls[:max_scripts])}",
@@ -175,4 +211,15 @@ class JsAnalyzer:
 
     @staticmethod
     def _looks_like_variable(s: str) -> bool:
+        # Only treat SHORT identifier-shaped strings as "probably a
+        # variable reference, not a real secret" -- real API
+        # keys/tokens are frequently pure alphanumeric+underscore too
+        # (Stripe-style sk_live_..., hex tokens, etc.), so blanket-
+        # excluding anything identifier-shaped regardless of length
+        # was silently dropping realistic secrets before they ever
+        # reached token_hits -- confirmed empirically: a Stripe-shaped
+        # test key was filtered out entirely by this check. A genuine
+        # JS variable name is rarely this long; a real secret often is.
+        if len(s) > 24:
+            return False
         return bool(re.match(r"^[a-z_$][a-z0-9_$]*$", s, re.IGNORECASE))

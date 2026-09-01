@@ -27,6 +27,27 @@ CyberToolkit/engagements.json
 # Local lab data (docker volumes, not source)
 bash_scripts_for_pentest/19-Lab-Environment/pentest_lab/volumes/
 
+# Secrets / local environment config -- never commit a real .env, only
+# .env.example templates. GS_VAULT_KEY, LLM API keys, and lab-stack
+# passwords all belong in the local .env or lib/vault.sh, not in git.
+.env
+!.env.example
+!*/.env.example
+credentials/
+*.pem
+*.key
+!*.example.key
+
+# Test/CI output (test-output, not source)
+tests/*_results.tsv
+tests/*_results.json
+test-output/
+logs/
+runtime/
+
+# Release build output (tools/make_release.sh) -- built artifacts, not source
+dist/
+
 # Editor/OS cruft
 .DS_Store
 Thumbs.db

@@ -6,7 +6,7 @@
 
 ## Overview
 
-CyberToolkit is the graphical front-end for GhostStrike v3.0.0 [PHANTOM]. Built on CustomTkinter with a dark void aesthetic, it provides a unified interface for launching all 164 offensive security modules, monitoring live execution output, tracking threat levels, and navigating GhostStrike's 22 attack surface categories without touching a terminal directly. An optional AI Co-Pilot mode lets a specialized agent persona drive modules on your behalf, gated through the identical policy/trust/scope checks a manual run goes through.
+CyberToolkit is the graphical front-end for GhostStrike v3.0.0 [PHANTOM]. Built on CustomTkinter with a dark void aesthetic, it provides a unified interface for launching all 165 offensive security modules, monitoring live execution output, tracking threat levels, and navigating GhostStrike's 22 attack surface categories without touching a terminal directly. An optional AI Co-Pilot mode lets a specialized agent persona drive modules on your behalf, gated through the identical policy/trust/scope checks a manual run goes through.
 
 The interface runs on a `#05060a` near-black background with neon accent colors — purple for primary actions, red for threat indicators, green for success states — maintaining the operational tone expected of a production offensive security platform.
 
@@ -71,7 +71,7 @@ pip3 install anthropic openai   # optional, for AI Co-Pilot mode
 ## Features
 
 ### Attack Categories (22)
-The sidebar organizes GhostStrike's 164 modules into 22 numbered attack surface areas (`00-Framework-Core` through `21-Bypass-Techniques`) for rapid navigation — Network Security, Web Application Security, Wireless Security, Database Security, Active Directory, Password Attacks, Social Engineering, System Security, Container Security, Mobile Security, Cloud Security, Exploitation, Post-Exploitation, Reporting Tools, Automation Tools, Specialized Testing, Monitoring & Detection, Application Security, Lab Environment, IoT Security, and Bypass Techniques, plus the Framework Core meta-tools. New category folders and modules are picked up automatically on launch (`discover_scripts()` scans the directory tree directly rather than reading a hardcoded list).
+The sidebar organizes GhostStrike's 165 modules into 22 numbered attack surface areas (`00-Framework-Core` through `21-Bypass-Techniques`) for rapid navigation — Network Security, Web Application Security, Wireless Security, Database Security, Active Directory, Password Attacks, Social Engineering, System Security, Container Security, Mobile Security, Cloud Security, Exploitation, Post-Exploitation, Reporting Tools, Automation Tools, Specialized Testing, Monitoring & Detection, Application Security, Lab Environment, IoT Security, and Bypass Techniques, plus the Framework Core meta-tools. New category folders and modules are picked up automatically on launch (`discover_scripts()` scans the directory tree directly rather than reading a hardcoded list).
 
 ### AI Co-Pilot Mode
 A Manual/AI toggle (top-right of the terminal panel) switches between running modules yourself and handing tasks to a specialized agent persona (chosen from the adjacent dropdown). Enabling it prompts for a vault master password to unlock a stored Anthropic/OpenAI API key — or an `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` environment variable if you skip that. Every module call the agent makes is checked against the same `gs_policy_gate` a manual run would hit; a module without confirmed policy-gate wiring is refused, not attempted.

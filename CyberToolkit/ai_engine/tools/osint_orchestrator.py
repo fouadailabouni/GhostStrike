@@ -116,10 +116,15 @@ class OsintOrchestrator:
         harvesters = ["bing", "certspotter", "dnsdumpster", "hackertarget"]
 
         for source in harvesters:
-            cmd = f"theHarvester -d {target} -b {source} -l {limit} -f /tmp/gs_harvester_{source}"
+            # List argv, no shell=True: target/source are LLM tool-call
+            # arguments (see TOOL_SCHEMA) -- an f-string interpolated into
+            # a shell=True command string here would be a straightforward
+            # command-injection path (e.g. target = "x.com; rm -rf ~").
+            cmd = ["theHarvester", "-d", target, "-b", source, "-l", str(limit),
+                   "-f", f"/tmp/gs_harvester_{source}"]
             try:
                 result = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=60
+                    cmd, capture_output=True, text=True, timeout=60
                 )
                 output = result.stdout
                 if output.strip():
@@ -175,11 +180,16 @@ class OsintOrchestrator:
     def _dns_recon(self, target: str) -> str:
         lines = ["--- DNS Reconnaissance ---"]
         record_types = ["A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME"]
+        # List argv, no shell=True, throughout this function: target (and
+        # ns, taken from a DNS response) are not shell-escaped anywhere,
+        # and target is an LLM tool-call argument (see TOOL_SCHEMA) --
+        # interpolating either into a shell=True command string is a
+        # command-injection path.
         for rtype in record_types:
             try:
                 result = subprocess.run(
-                    f"dig +short {rtype} {target}",
-                    shell=True, capture_output=True, text=True, timeout=10,
+                    ["dig", "+short", rtype, target],
+                    capture_output=True, text=True, timeout=10,
                 )
                 output = result.stdout.strip()
                 if output:
@@ -190,14 +200,14 @@ class OsintOrchestrator:
         # Zone transfer attempt
         try:
             ns_result = subprocess.run(
-                f"dig +short NS {target}",
-                shell=True, capture_output=True, text=True, timeout=10,
+                ["dig", "+short", "NS", target],
+                capture_output=True, text=True, timeout=10,
             )
             for ns in ns_result.stdout.strip().splitlines():
                 ns = ns.strip().rstrip(".")
                 zt = subprocess.run(
-                    f"dig AXFR {target} @{ns}",
-                    shell=True, capture_output=True, text=True, timeout=15,
+                    ["dig", "AXFR", target, f"@{ns}"],
+                    capture_output=True, text=True, timeout=15,
                 )
                 if "XFR size" in zt.stdout:
                     lines.append(f"\n  [!] Zone transfer SUCCESSFUL from {ns}:")

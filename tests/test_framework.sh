@@ -27,8 +27,8 @@ NC='\033[0m'
 
 # ── Test runner helpers ───────────────────────────────────────
 
-_pass() { echo -e "${GREEN}  PASS${NC}  $1"; (( PASS++ )); }
-_fail() { echo -e "${RED}  FAIL${NC}  $1: $2"; (( FAIL++ )); ERRORS+=("$1: $2"); }
+_pass() { echo -e "${GREEN}  PASS${NC}  $1"; PASS=$((PASS + 1)); }
+_fail() { echo -e "${RED}  FAIL${NC}  $1: $2"; FAIL=$((FAIL + 1)); ERRORS+=("$1: $2"); }
 _skip() { echo -e "${YELLOW}  SKIP${NC}  $1: $2"; }
 
 _run_test() {
@@ -115,7 +115,11 @@ test_finding_validates_schema() {
         _skip "${name}" "no findings directory (run test_finding_new first)"; return
     fi
     local f
-    f=$(find "${findings_dir}" -name "*.json" -not -name "findings.json" | head -1)
+    # -print -quit (not "| head -1") -- under `set -o pipefail`, find
+    # receiving SIGPIPE when head -1 closes early is reported as the
+    # pipeline's own failure and kills the script under set -e. -quit
+    # stops find itself after the first match, no pipe involved.
+    f=$(find "${findings_dir}" -name "*.json" -not -name "findings.json" -print -quit)
     if [[ -z "${f}" ]]; then
         _skip "${name}" "no finding files to validate"; return
     fi
@@ -227,10 +231,10 @@ test_all_scripts_bash_n() {
     local failed=0 passed=0
     while IFS= read -r -d '' f; do
         if bash -n "$f" 2>/dev/null; then
-            (( passed++ ))
+            passed=$((passed + 1))
         else
             echo -e "${RED}    SYNTAX ERROR${NC}: $f" >&2
-            (( failed++ ))
+            failed=$((failed + 1))
         fi
     done < <(find "${FRAMEWORK_DIR}" -name "*.sh" -print0)
     local total=$(( passed + failed ))

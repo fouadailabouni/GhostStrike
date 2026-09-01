@@ -281,17 +281,26 @@ class ShellExecutor:
     # ── Environment wrapping ─────────────────────────────────────────────────
 
     def _wrap_for_environment(self, command: str) -> str:
+        # command itself was already safely quoted here via a manual
+        # POSIX-quote idiom (equivalent to shlex.quote); docker_ctr/
+        # ssh_host/ssh_user/ssh_password were not quoted at all. These are
+        # normally operator-set config (GS_DOCKER_CONTAINER/GS_SSH_HOST/
+        # GS_SSH_USER/GS_SSH_PASSWORD), not per-call LLM arguments, but a
+        # password containing shell metacharacters ($, `, ', ...) -- a
+        # completely ordinary thing for a real password to contain -- would
+        # break or hijack this command with no attacker involved at all.
+        # shlex.quote() throughout closes both the accidental-breakage and
+        # the injection cases the same way.
         if self._docker_ctr:
-            safe = command.replace("'", "'\\''")
-            return f"docker exec {self._docker_ctr} bash -c '{safe}'"
+            return f"docker exec {shlex.quote(self._docker_ctr)} bash -c {shlex.quote(command)}"
         if self._ssh_host and self._ssh_user:
-            safe = command.replace("'", "'\\''")
+            target = f"{shlex.quote(self._ssh_user)}@{shlex.quote(self._ssh_host)}"
             if self._ssh_password:
                 return (
-                    f"sshpass -p '{self._ssh_password}' ssh -o StrictHostKeyChecking=no "
-                    f"{self._ssh_user}@{self._ssh_host} '{safe}'"
+                    f"sshpass -p {shlex.quote(self._ssh_password)} ssh -o StrictHostKeyChecking=no "
+                    f"{target} {shlex.quote(command)}"
                 )
-            return f"ssh -o StrictHostKeyChecking=no {self._ssh_user}@{self._ssh_host} '{safe}'"
+            return f"ssh -o StrictHostKeyChecking=no {target} {shlex.quote(command)}"
         return command
 
     @staticmethod

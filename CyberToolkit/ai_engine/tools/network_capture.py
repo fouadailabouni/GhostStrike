@@ -10,6 +10,7 @@ Copyright (C) 2026 Fouad Ailabouni. All rights reserved.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import tempfile
 import threading
@@ -60,6 +61,19 @@ class NetworkCapture:
         except ImportError:
             return "Error: paramiko not installed. Run: pip install paramiko"
 
+        # interface/capture_filter are LLM tool-call arguments (see
+        # TOOL_SCHEMA) sent as a single string to the remote host's shell
+        # via paramiko's exec_command -- validate/quote every one of them
+        # before building that string, not just capture_filter, and not
+        # with a naive "'...'" wrap that a single embedded quote breaks.
+        try:
+            duration = int(duration)
+            port = int(port)
+        except (TypeError, ValueError):
+            return "Error: duration and port must be integers."
+        if not interface or not all(c.isalnum() or c in "-_." for c in interface):
+            return f"Error: invalid interface name {interface!r}."
+
         with tempfile.NamedTemporaryFile(suffix=".pcap", delete=False) as tmp:
             pcap_path = tmp.name
 
@@ -84,9 +98,15 @@ class NetworkCapture:
             return f"Error connecting to {host}: {exc}"
 
         try:
-            tcpdump_cmd = f"timeout {duration} tcpdump -U -i {interface} -w -"
+            # interface was already validated to a safe charset above;
+            # capture_filter is genuinely free-form (a real BPF expression
+            # can contain quotes, parens, etc.), so it gets real shell
+            # quoting via shlex.quote() rather than a naive "'...'" wrap
+            # that breaks (and lets arbitrary commands run on the remote
+            # host) the moment the filter itself contains a single quote.
+            tcpdump_cmd = f"timeout {duration} tcpdump -U -i {shlex.quote(interface)} -w -"
             if capture_filter:
-                tcpdump_cmd += f" '{capture_filter}'"
+                tcpdump_cmd += f" {shlex.quote(capture_filter)}"
 
             _, stdout, stderr_ch = ssh.exec_command(tcpdump_cmd)
 

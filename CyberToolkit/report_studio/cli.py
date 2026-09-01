@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from .data_sources import load_report_data
-from .exporters import export_html, export_json, export_sarif
+from .exporters import export_docx, export_html, export_json, export_pdf, export_sarif
 from .variants import render_markdown
 
 
@@ -21,14 +21,14 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="GhostStrike Report Studio")
     parser.add_argument("--engagement", "-e", required=True)
     parser.add_argument("--variant", "-v", default="technical",
-                         choices=["executive", "technical", "developer"])
+                         choices=["executive", "technical", "developer", "remediation", "retest"])
     parser.add_argument("--format", "-f", default="md",
                          help="Comma-separated: html,md,json,sarif")
     parser.add_argument("--out", "-o", default=".")
     args = parser.parse_args(argv)
 
     formats = [f.strip().lower() for f in args.format.split(",") if f.strip()]
-    unknown = [f for f in formats if f not in ("html", "md", "json", "sarif")]
+    unknown = [f for f in formats if f not in ("html", "md", "json", "sarif", "docx", "pdf")]
     if unknown:
         print(f"Unknown format(s): {unknown}", file=sys.stderr)
         return 2
@@ -60,6 +60,17 @@ def main(argv=None) -> int:
             written.append(str(sarif_path))
         except Exception as exc:
             print(f"[WARN] SARIF export failed: {exc}", file=sys.stderr)
+
+    if "docx" in formats:
+        docx_path = export_docx(data, f"GhostStrike Report — {args.engagement}", out_dir / f"{stem}.docx")
+        written.append(str(docx_path))
+
+    if "pdf" in formats:
+        try:
+            pdf_path = export_pdf(data, markdown_text, f"GhostStrike Report — {args.engagement}", out_dir / f"{stem}.pdf")
+            written.append(str(pdf_path))
+        except RuntimeError as exc:
+            print(f"[WARN] PDF export failed: {exc}", file=sys.stderr)
 
     if not written:
         print("No formats produced any output.", file=sys.stderr)

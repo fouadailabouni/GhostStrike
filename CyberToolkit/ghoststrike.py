@@ -453,6 +453,11 @@ class GhostStrikeApp(ctk.CTk):
             fg_color=C["card"], hover_color=C["hover"], border_width=1,
             border_color=C["border"], text_color=C["text_dim"],
             command=self._switch_engagement_dialog).pack(side="left", padx=2)
+        ctk.CTkButton(ebf, text="DASH", width=42, height=18,
+            font=ctk.CTkFont(family="Consolas", size=12), corner_radius=3,
+            fg_color=C["card"], hover_color=C["hover"], border_width=1,
+            border_color=C["neon_purple"], text_color=C["neon_purple"],
+            command=self._show_engagement_dashboard).pack(side="left", padx=2)
 
         # ── Footer ────────────────────────────────────────────
         ft = ctk.CTkFrame(sb, fg_color=C["obsidian"], height=28, corner_radius=0)
@@ -998,8 +1003,29 @@ class GhostStrikeApp(ctk.CTk):
             self.after(1000, self._update_timer)
 
     def _build_shell_command(self, path, args):
-        norm = path.replace("\\", "/")
-        wsl = re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}", norm)
+        # Delegates to shell_command_builder.find_bash_invocation(), the one
+        # shared, safely-quoted (shlex.quote) implementation of the WSL /
+        # Git Bash / native-bash resolution chain -- see that module's
+        # docstring. This function used to hand-roll its own version with
+        # naive f'"{arg}"' wrapping, which did not escape a quote/backtick/`$`
+        # inside a value and was a real, confirmed command-injection bug:
+        # any GUI-typed module parameter, or any AI-agent-supplied one
+        # (parameters flow through this same builder for AI-initiated runs
+        # too), could break out of the intended command.
+        from shell_command_builder import find_bash_invocation
+
+        env_vars = {}
+        if self.active_engagement:
+            eng = self._eng_raw.get("engagements", {}).get(self.active_engagement, {})
+            env_vars["GS_ENGAGEMENT_ID"] = eng.get("id", self.active_engagement)
+            env_vars["GS_ENVIRONMENT"] = eng.get("environment", "lab")
+            scope_file = (eng.get("scope_file") or "").strip()
+            if scope_file:
+                # scope_file is captured from a Windows file-picker in
+                # _new_engagement_dialog; needs WSL-path conversion only
+                # when the WSL branch is actually used (wsl_path_env_keys
+                # below), same as the module/wrapper script path itself.
+                env_vars["GS_SCOPE_FILE"] = scope_file
 
         # Route through repro_runner.sh --no-capture rather than invoking the
         # module directly. Manual GUI runs used to bypass repro_runner.sh
@@ -1027,58 +1053,19 @@ class GhostStrikeApp(ctk.CTk):
         # for never touching a live interactive session's tty behavior.
         repro_runner = os.path.join(SCRIPTS_DIR, "repro_runner.sh")
         if os.path.exists(repro_runner):
-            runner_wsl = re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}",
-                                 repro_runner.replace("\\", "/"))
-            runner_norm = repro_runner.replace("\\", "/")
-            full_astr = " ".join(f'"{a}"' for a in (["--no-capture", wsl] + list(args)))
-            full_astr_native = " ".join(f'"{a}"' for a in (["--no-capture", norm] + list(args)))
+            target_script = repro_runner
+            full_args = ["--no-capture", path] + list(args)
+            path_arg_indices = {1}  # index of `path` within full_args -- needs WSL/native conversion too
         else:
-            runner_wsl = runner_norm = None
-            full_astr = " ".join(f'"{a}"' for a in args)
-            full_astr_native = full_astr
+            target_script = path
+            full_args = list(args)
+            path_arg_indices = set()
 
-        # Prepend engagement env vars if active
-        env_prefix = ""
-        if self.active_engagement:
-            eng = self._eng_raw.get("engagements", {}).get(self.active_engagement, {})
-            eid = eng.get("id", self.active_engagement)
-            env_val = eng.get("environment", "lab")
-            env_prefix = f'export GS_ENGAGEMENT_ID="{eid}"; export GS_ENVIRONMENT="{env_val}"; '
-            scope_file = (eng.get("scope_file") or "").strip()
-            if scope_file:
-                # scope_file is captured from a Windows file-picker in _new_engagement_dialog;
-                # convert to a WSL/POSIX path so lib/scope_check.py (invoked from bash) can
-                # actually open it, the same way the script path itself is converted below.
-                scope_wsl = re.sub(r"^([A-Za-z]):", lambda m: f"/mnt/{m.group(1).lower()}",
-                                    scope_file.replace("\\", "/"))
-                env_prefix += f'export GS_SCOPE_FILE="{scope_wsl}"; '
-
-        if runner_wsl:
-            try:
-                r = subprocess.run(["wsl", "--status"], capture_output=True, timeout=5)
-                if r.returncode == 0:
-                    return ["wsl", "bash", "-c", f'{env_prefix}bash "{runner_wsl}" {full_astr}']
-            except Exception: pass
-            for gb in [r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"]:
-                if os.path.exists(gb):
-                    return [gb, "-c", f'{env_prefix}bash "{runner_norm}" {full_astr_native}']
-            if os.name != "nt":
-                return ["sudo", "bash", "-c", f'{env_prefix}bash "{runner_wsl}" {full_astr}']
-            return ["bash", "-c", f'{env_prefix}bash "{runner_norm}" {full_astr_native}']
-
-        # Fallback: repro_runner.sh missing (stripped-down deployment) -- run
-        # the module directly, exactly as before this change.
-        try:
-            r = subprocess.run(["wsl", "--status"], capture_output=True, timeout=5)
-            if r.returncode == 0:
-                return ["wsl", "bash", "-c", f'{env_prefix}bash "{wsl}" {full_astr}']
-        except Exception: pass
-        for gb in [r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"]:
-            if os.path.exists(gb):
-                return [gb, "-c", f'{env_prefix}bash "{norm}" {full_astr_native}']
-        if os.name != "nt":
-            return ["sudo", "bash", "-c", f'{env_prefix}bash "{wsl}" {full_astr}']
-        return ["bash", "-c", f'{env_prefix}bash "{norm}" {full_astr_native}']
+        return find_bash_invocation(
+            target_script, full_args, env_vars,
+            wsl_path_env_keys={"GS_SCOPE_FILE"},
+            path_arg_indices=path_arg_indices,
+        )
 
     def _execute_script(self, cmd):
         try:
@@ -2340,6 +2327,167 @@ class GhostStrikeApp(ctk.CTk):
             self.engagement_label.configure(
                 text=f"⚑ {label[:22]}", text_color=C["neon_green"])
 
+    def _show_engagement_dashboard(self):
+        """Roadmap item 22: an engagement-centric home screen -- exposure
+        counts, attack graph summary, and an operator-suggested next
+        action -- built entirely from data that already exists
+        (EngagementRepository, attack_graph_builder, ghost_score), the
+        same derived-not-duplicated principle the attack graph itself
+        already follows. Additive: opened from a button, doesn't replace
+        the existing module-driven flow (see item 23 -- Operator Mode
+        stays exactly as it is)."""
+        if not self.active_engagement:
+            messagebox.showinfo("Engagement Dashboard", "No active engagement. Create or open one first (+NEW / LIST).")
+            return
+
+        eid = self.active_engagement
+        eng = self._eng_raw.get("engagements", {}).get(eid, {})
+
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from engagement_repository import EngagementRepository
+            sys.path.insert(0, os.path.join(SCRIPTS_DIR, "lib"))
+            import attack_graph_builder as agb
+            import ghost_score as gscore
+        except Exception as exc:
+            messagebox.showerror("Engagement Dashboard", f"Could not load engagement data layer:\n{exc}")
+            return
+
+        repo = EngagementRepository(eid)
+        try:
+            summary = repo.summary()
+            assets = repo.get_assets()
+            crown_jewels = repo.get_crown_jewels()
+            findings = repo.get_findings()
+        finally:
+            repo.close()
+
+        try:
+            graph = agb.build_graph(eid)
+        except Exception:
+            graph = {"nodes": [], "edges": []}
+
+        scored = []
+        if findings:
+            try:
+                scored = gscore.score_engagement(eid, crown_jewels)
+            except Exception:
+                scored = []
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title(f"GhostStrike — Dashboard — {eid}")
+        dlg.geometry("760x560")
+        dlg.configure(fg_color=C["obsidian"])
+        dlg.after(100, lambda w=dlg: (w.update_idletasks(), w.lift(), w.focus_force(), w.grab_set()))
+
+        hdr = ctk.CTkFrame(dlg, fg_color=C["abyss"], height=54, corner_radius=0)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        ctk.CTkLabel(hdr, text=f"⚑  {eid}   ·   {eng.get('client', 'no client set')}",
+            font=ctk.CTkFont(family="Consolas", size=15, weight="bold"),
+            text_color=C["neon_green"]).pack(side="left", padx=16, pady=14)
+        ctk.CTkLabel(hdr, text=f"[{eng.get('environment', '?')}]",
+            font=ctk.CTkFont(family="Consolas", size=13),
+            text_color=C["neon_amber"]).pack(side="left", pady=14)
+
+        body = ctk.CTkFrame(dlg, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=16, pady=12)
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(1, weight=1)
+
+        # ── Exposure panel ──────────────────────────────────────────
+        exp = ctk.CTkFrame(body, fg_color=C["slate"], corner_radius=6, border_width=1, border_color=C["border"])
+        exp.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
+        ctk.CTkLabel(exp, text="EXPOSURE", font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                     text_color=C["neon_cyan"]).pack(anchor="w", padx=12, pady=(10, 4))
+        by_sev = summary.get("findings_by_severity", {})
+        stats = [
+            (f"Assets {len(assets)}", C["text"]),
+            (f"Crown Jewels {len(crown_jewels)}", C["neon_purple"] if crown_jewels else C["text_ghost"]),
+            (f"Findings {summary.get('finding_count', 0)}", C["text"]),
+        ]
+        for sev, clr in [("CRITICAL", C["neon_red"]), ("HIGH", "#e74c3c"), ("MEDIUM", C["neon_amber"])]:
+            if by_sev.get(sev):
+                stats.append((f"{sev} {by_sev[sev]}", clr))
+        for label, clr in stats:
+            ctk.CTkLabel(exp, text=f"  {label}", font=ctk.CTkFont(family="Consolas", size=13),
+                         text_color=clr).pack(anchor="w", padx=12, pady=1)
+        ctk.CTkLabel(exp, text="", height=6).pack()
+
+        # ── Attack Graph panel ──────────────────────────────────────
+        ag = ctk.CTkFrame(body, fg_color=C["slate"], corner_radius=6, border_width=1, border_color=C["border"])
+        ag.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 8))
+        ctk.CTkLabel(ag, text="ATTACK GRAPH", font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                     text_color=C["neon_cyan"]).pack(anchor="w", padx=12, pady=(10, 4))
+        ctk.CTkLabel(ag, text=f"  {len(graph['nodes'])} nodes / {len(graph['edges'])} edges",
+                     font=ctk.CTkFont(family="Consolas", size=13), text_color=C["text"]).pack(anchor="w", padx=12, pady=1)
+
+        def _open_graph():
+            try:
+                import webbrowser
+                html_path = agb.save_html(eid, graph)
+                webbrowser.open(html_path.as_uri())
+            except Exception as exc:
+                messagebox.showerror("Attack Graph", str(exc))
+
+        ctk.CTkButton(ag, text="OPEN FULL GRAPH →", height=26, corner_radius=3,
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            fg_color=C["card"], hover_color=C["hover"], border_width=1,
+            border_color=C["neon_cyan"], text_color=C["neon_cyan"],
+            command=_open_graph).pack(anchor="w", padx=12, pady=(6, 10))
+
+        # ── Operator suggestion panel ────────────────────────────────
+        op = ctk.CTkFrame(body, fg_color=C["obsidian"], corner_radius=6, border_width=1, border_color=C["neon_purple"])
+        op.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(0, 0))
+        ctk.CTkLabel(op, text="OPERATOR — SUGGESTED NEXT VALIDATION",
+            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+            text_color=C["neon_purple"]).pack(anchor="w", padx=12, pady=(10, 4))
+
+        open_findings = [f for f in findings if f.get("status", "open") not in ("fixed", "accepted_risk")]
+        if scored:
+            top = max((s for s in scored if s["finding_id"] in
+                       {f.get("finding_id", f.get("id")) for f in open_findings}),
+                      key=lambda s: s["ghost_score"], default=None)
+        else:
+            top = None
+
+        if top:
+            ctk.CTkLabel(op, text=f"  {top['title']}",
+                font=ctk.CTkFont(family="Consolas", size=13, weight="bold"), text_color=C["text"]).pack(anchor="w", padx=12)
+            reasons = []
+            if top["factors"].get("crown_jewel_reachable"):
+                reasons.append("reaches a crown jewel")
+            if top["factors"].get("confidence", 1.0) > 1.0:
+                reasons.append("multi-source confirmed")
+            if top["factors"].get("credential_exposure", 1.0) > 1.0:
+                reasons.append("credential exposure")
+            reason_text = ", ".join(reasons) if reasons else "highest GhostScore among open findings"
+            ctk.CTkLabel(op, text=f"  GhostScore {top['ghost_score']} [{top['ghost_score_band']}] — {reason_text}",
+                font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_dim"]).pack(anchor="w", padx=12, pady=(0, 10))
+        elif open_findings:
+            f = open_findings[0]
+            ctk.CTkLabel(op, text=f"  {f.get('title', 'Untitled finding')}",
+                font=ctk.CTkFont(family="Consolas", size=13, weight="bold"), text_color=C["text"]).pack(anchor="w", padx=12)
+            ctk.CTkLabel(op, text=f"  [{f.get('severity', 'INFO')}] — mark crown jewels for GhostScore-ranked suggestions",
+                font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_dim"]).pack(anchor="w", padx=12, pady=(0, 10))
+        else:
+            ctk.CTkLabel(op, text="  No open findings. Run modules or import scanner output to begin.",
+                font=ctk.CTkFont(family="Consolas", size=12), text_color=C["text_ghost"]).pack(anchor="w", padx=12, pady=(0, 10))
+
+        # ── Quick nav ────────────────────────────────────────────────
+        nav = ctk.CTkFrame(dlg, fg_color=C["abyss"], height=40, corner_radius=0)
+        nav.pack(fill="x", side="bottom")
+        nav.pack_propagate(False)
+        nf = ctk.CTkFrame(nav, fg_color="transparent")
+        nf.pack(pady=6)
+        for label, cmd in [("FINDINGS", self._show_findings), ("CLOSE", dlg.destroy)]:
+            ctk.CTkButton(nf, text=label, width=100, height=26, corner_radius=3,
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                fg_color=C["card"], hover_color=C["hover"], border_width=1,
+                border_color=C["border"], text_color=C["text_dim"],
+                command=cmd).pack(side="left", padx=4)
+
     def _delete_engagement(self, eid, dlg):
         """
         Removes an engagement's *registry entry* only (engagements.json).
@@ -2869,7 +3017,17 @@ class GhostStrikeApp(ctk.CTk):
             threading.Thread(target=self._run_shell_cmd, args=(text,), daemon=True).start()
 
     def _run_shell_cmd(self, cmd):
-        """Execute a shell command and display output in terminal."""
+        """Execute a shell command and display output in terminal. Every
+        command is recorded to the engagement's run ledger and given its
+        own timestamped output directory holding the full captured
+        output/exit code/metadata -- the same evidence trail a
+        GhostStrike module run gets, so a manually-typed `nmap ...` here
+        is just as tracked as one run through a module. See roadmap item
+        14 ("GhostStrike + terminal", not "GhostStrike OR terminal")."""
+        started_at = datetime.datetime.now(datetime.timezone.utc)
+        cwd = os.getcwd()
+        output_chunks = []
+        returncode = None
         try:
             shell_cmd = ["sudo", "bash", "-c", cmd] if os.name != "nt" else ["bash", "-c", cmd]
             proc = subprocess.Popen(shell_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -2881,16 +3039,95 @@ class GhostStrikeApp(ctk.CTk):
                     chunk = os.read(fd, 4096)
                     if not chunk:
                         break
+                    output_chunks.append(chunk)
                     self._append_terminal(chunk.decode("utf-8", errors="replace"))
                 except OSError:
                     break
             proc.wait()
-            if proc.returncode != 0:
-                self._append_terminal(f"  [exit: {proc.returncode}]\n")
+            returncode = proc.returncode
+            if returncode != 0:
+                self._append_terminal(f"  [exit: {returncode}]\n")
         except Exception as e:
             self._append_terminal(f"  [!] {e}\n")
         finally:
             self.current_process = None
+
+        try:
+            self._record_terminal_run(cmd, b"".join(output_chunks), returncode, started_at, cwd)
+        except Exception:
+            pass  # Recording must never break the terminal itself.
+
+    def _record_terminal_run(self, cmd, output_bytes, returncode, started_at, cwd):
+        base = os.path.abspath(SCRIPTS_DIR)
+        verb = (cmd.strip().split() or ["cmd"])[0]
+        ts_dirname = f"terminal_{re.sub(r'[^a-zA-Z0-9_-]', '_', verb)}_{started_at.strftime('%Y%m%d_%H%M%S')}"
+        output_dir = os.path.join(base, ts_dirname)
+        os.makedirs(output_dir, exist_ok=True)
+
+        output_text = output_bytes.decode("utf-8", errors="replace")
+        output_log_path = os.path.join(output_dir, "output.log")
+        with open(output_log_path, "w", encoding="utf-8") as f:
+            f.write(output_text)
+
+        target_match = re.search(
+            r"\b(\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b", cmd)
+        with open(os.path.join(output_dir, "command.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "command": cmd, "exit_code": returncode,
+                "started_at": started_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "working_directory": cwd,
+                "target": target_match.group(1) if target_match else "",
+            }, f, indent=2)
+
+        # Run ledger entry -- same shape lib/common.sh's
+        # _gs_runs_ledger_append writes for module runs, so
+        # `gs timeline` / EngagementRepository.get_runs() see a
+        # terminal-typed command the same way they see a module run.
+        runs_index = os.path.join(base, "runs", "index.jsonl")
+        os.makedirs(os.path.dirname(runs_index), exist_ok=True)
+        eng_env = self._eng_raw.get("engagements", {}).get(self.active_engagement or "", {}).get("environment", "")
+        entry = {
+            "timestamp": started_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "module": f"terminal:{verb}",
+            "engagement_id": self.active_engagement or "",
+            "environment": eng_env,
+            "output_dir": ts_dirname,
+            "operator": os.environ.get("USER", os.environ.get("USERNAME", "unknown")),
+        }
+        with open(runs_index, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+        self._suggest_import_if_recognized(verb, output_text, output_log_path)
+
+    def _suggest_import_if_recognized(self, verb, output_text, output_path):
+        """Detects compatible scanner output and suggests the exact
+        `gs import` command to run -- an explicit suggestion, never a
+        silent auto-write of findings the operator didn't ask for
+        (matching the same no-silent-assumptions principle
+        resolve_retest() and the fail-closed policy checks apply
+        elsewhere in this codebase)."""
+        stripped = output_text.strip()
+        tool = None
+        if verb == "nmap" and "<nmaprun" in stripped:
+            tool = "nmap"
+        elif verb == "nikto" and "<niktoscan" in stripped:
+            tool = "nikto"
+        elif "<issues" in stripped and "burpVersion" in stripped:
+            tool = "burp"
+        elif "<OWASPZAPReport" in stripped:
+            tool = "zap"
+        elif "<NessusClientData_v2" in stripped:
+            tool = "nessus"
+        elif verb == "nuclei" and stripped.startswith("{"):
+            tool = "nuclei"
+        elif verb == "masscan" and stripped.startswith("["):
+            tool = "masscan"
+
+        if tool:
+            self._append_terminal(
+                f"\n  [i] Output looks like {tool} format. Import it as findings with:\n"
+                f"      gs import {tool} \"{output_path}\"\n"
+            )
 
     # ══════════════════════════════════════════
     # AI Co-Pilot

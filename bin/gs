@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# GhostStrike CLI entry point.
+#
+# Add this directory to PATH (e.g. `export PATH="$PATH:$(pwd)/bin"` from the
+# repo root, or symlink this file into somewhere already on PATH) so `gs`
+# works from anywhere, matching the roadmap's `gs findings`, `gs run ...`
+# usage. Until then, run it directly: ./bin/gs findings
+#
+# © 2026 Fouad Ailabouni. All rights reserved.
+set -euo pipefail
+
+_GS_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_GS_REPO_ROOT="$(dirname "${_GS_BIN_DIR}")"
+
+exec python3 "${_GS_REPO_ROOT}/CyberToolkit/gs_cli.py" "$@"

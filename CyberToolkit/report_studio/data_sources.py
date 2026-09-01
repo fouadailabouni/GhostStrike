@@ -32,6 +32,11 @@ if _lib_path not in sys.path:
 
 import engagement_query as eq  # noqa: E402
 
+_cybertoolkit_path = str(Path(__file__).resolve().parent.parent)
+if _cybertoolkit_path not in sys.path:
+    sys.path.insert(0, _cybertoolkit_path)
+from engagement_repository import EngagementRepository  # noqa: E402
+
 
 def _engagements_file() -> Path:
     return Path(__file__).resolve().parent.parent / "engagements.json"
@@ -49,6 +54,7 @@ class ReportData:
     repro_sessions: List[Dict] = field(default_factory=list)
     evidence_manifests: List[Dict] = field(default_factory=list)
     summary: Dict = field(default_factory=dict)
+    retests: List[Dict] = field(default_factory=list)
 
     @property
     def findings_by_severity(self) -> Dict[str, List[Dict]]:
@@ -86,6 +92,11 @@ def _load_engagement_record(engagement_id: str) -> Dict:
 
 def load_report_data(engagement_id: str) -> ReportData:
     findings = eq.get_findings(engagement_id)
+    repo = EngagementRepository(engagement_id)
+    try:
+        retests = repo.get_retests()
+    finally:
+        repo.close()
     return ReportData(
         engagement_id=engagement_id,
         engagement=_load_engagement_record(engagement_id),
@@ -94,4 +105,5 @@ def load_report_data(engagement_id: str) -> ReportData:
         repro_sessions=eq.get_repro_sessions(engagement_id),
         evidence_manifests=eq.get_evidence_manifests(engagement_id),
         summary=eq.get_summary(engagement_id),
+        retests=retests,
     )
