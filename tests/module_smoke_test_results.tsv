@@ -1,11 +1,11 @@
 script	syntax	noargs	help
 00-Framework-Core/authorization_framework.sh	PASS	FAIL (exited 0 with no target — should require one)	PASS
 00-Framework-Core/ci_linting_framework.sh	PASS	FAIL (exited 0 with no target — should require one)	PASS
-00-Framework-Core/framework_tester.sh	PASS	FAIL (timed out after 5s — did it start real work with no target?)	FAIL (timed out)
+00-Framework-Core/framework_tester.sh	PASS	PASS	SKIP (no --help support, exit 1)
 00-Framework-Core/json_output_framework.sh	PASS	FAIL (exited 0 with no target — should require one)	PASS
 00-Framework-Core/mitre_attack_framework.sh	PASS	FAIL (exited 0 with no target — should require one)	PASS
 00-Framework-Core/pentest_roadmap.sh	PASS	FAIL (exited 0 with no target — should require one)	PASS
-00-Framework-Core/tool_verification.sh	PASS	FAIL (timed out after 5s — did it start real work with no target?)	PASS
+00-Framework-Core/tool_verification.sh	PASS	PASS	PASS
 01-Network-Security/banner_grabbing.sh	PASS	PASS	PASS
 01-Network-Security/dns_recon.sh	PASS	PASS	PASS
 01-Network-Security/firewall_rule_tester.sh	PASS	PASS	PASS
@@ -48,7 +48,7 @@ script	syntax	noargs	help
 02-Web-Application-Security/web_misconfiguration_checker.sh	PASS	PASS	PASS
 02-Web-Application-Security/webapp_testing.sh	PASS	FAIL (exited 0 with no target — should require one)	PASS
 02-Web-Application-Security/websocket_security_tester.sh	PASS	PASS	PASS
-03-Wireless-Security/bluetooth_scanner.sh	PASS	FAIL (timed out after 5s — did it start real work with no target?)	PASS
+03-Wireless-Security/bluetooth_scanner.sh	PASS	FAIL (exited 0 with no target — should require one)	PASS
 03-Wireless-Security/deauth_tester.sh	PASS	PASS	PASS
 03-Wireless-Security/rogue_ap_detector.sh	PASS	PASS	PASS
 03-Wireless-Security/wifi_penetration_tester.sh	PASS	PASS	PASS

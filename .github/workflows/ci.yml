@@ -76,7 +76,7 @@ jobs:
         fi
 
     - name: Module smoke test (syntax, no-args crash, --help)
-      run: bash bash_scripts_for_pentest/tests/module_smoke_test.sh
+      run: bash tests/module_smoke_test.sh
 
   security:
     runs-on: ubuntu-latest
