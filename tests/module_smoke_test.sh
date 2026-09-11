@@ -127,6 +127,7 @@ DRY_RUN_FOR_NOARGS=(
     "01-Network-Security/system_config_audit.sh"
     "08-System-Security/cis_linux_manual_checks.sh"
     "08-System-Security/cis_windows_checks.sh"
+    "08-System-Security/mandatory_access_control_checker.sh"
     "08-System-Security/system_config_audit.sh"
     "09-Container-Security/container_security_scanner.sh"
     "11-Cloud-Security/aws_security_scanner.sh"
