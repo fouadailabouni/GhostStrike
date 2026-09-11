@@ -28,6 +28,7 @@ import uuid
 from typing import Callable, Dict, Optional
 
 from ..guardrails import GhostStrikeGuardrails
+from ..tool_governance import gate_or_refuse, capture_ad_hoc_evidence
 
 # ── OpenAI-compatible tool schema ────────────────────────────────────────────
 TOOL_SCHEMA: Dict = {
@@ -38,7 +39,11 @@ TOOL_SCHEMA: Dict = {
             "Execute any shell command on the target environment. "
             "Supports one-shot commands, interactive sessions (ssh, nc, python), "
             "and session management. "
-            "Use session_id to send input to a running interactive session."
+            "Use session_id to send input to a running interactive session. "
+            "Every call requires explicit operator approval regardless of autonomy tier -- "
+            "this tool has no fixed trust classification the way run_ghoststrike_module does, "
+            "so it cannot auto-proceed even in Operate mode; prefer run_ghoststrike_module "
+            "for anything a registered module already covers."
         ),
         "parameters": {
             "type": "object",
@@ -118,6 +123,9 @@ class ShellExecutor:
         ssh_user: Optional[str] = None,
         ssh_password: Optional[str] = None,
         docker_container: Optional[str] = None,
+        autonomy_tier: str = "recommend",
+        approval_callback: Optional[Callable[[Dict], bool]] = None,
+        engagement_id: Optional[str] = None,
     ) -> None:
         self._guardrails      = guardrails or GhostStrikeGuardrails()
         self._output_callback = output_callback
@@ -126,6 +134,13 @@ class ShellExecutor:
         self._ssh_password    = ssh_password or os.getenv("GS_SSH_PASSWORD")
         self._docker_ctr      = docker_container or os.getenv("GS_DOCKER_CONTAINER")
         self._sessions: Dict[str, _Session] = {}
+        # See ai_engine/tool_governance.py: this tool executes arbitrary
+        # commands with no fixed trust tier, so every call -- in every
+        # autonomy tier -- requires explicit approval, unlike governed
+        # modules where SAFE_ENUM/VALIDATION can auto-proceed in Operate mode.
+        self._autonomy_tier   = autonomy_tier
+        self._approval_cb     = approval_callback
+        self._engagement_id   = engagement_id or os.getenv("GS_ENGAGEMENT_ID")
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -156,14 +171,27 @@ class ShellExecutor:
         if not ok:
             return reason
 
+        # Governance gate: unlike run_ghoststrike_module, this tool has no
+        # fixed trust tier to check, so every call requires explicit
+        # approval in every autonomy tier -- see ai_engine/tool_governance.py.
+        gate_msg = gate_or_refuse(
+            "execute_shell_command", f"command={command!r}",
+            self._autonomy_tier, self._approval_cb,
+            detail={"command": command, "interactive": interactive, "session_id": session_id},
+        )
+        if gate_msg is not None:
+            return gate_msg
+
         # Route to correct execution path
         if session_id:
-            return self._send_to_session(session_id, command)
+            result = self._send_to_session(session_id, command)
+        elif interactive or self._is_interactive(command):
+            result = self._start_interactive_session(command)
+        else:
+            result = self._run_oneshot(command, timeout)
 
-        if interactive or self._is_interactive(command):
-            return self._start_interactive_session(command)
-
-        return self._run_oneshot(command, timeout)
+        capture_ad_hoc_evidence(self._engagement_id, "execute_shell_command", command, result)
+        return result
 
     # ── One-shot execution ────────────────────────────────────────────────────
 

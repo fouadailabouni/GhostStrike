@@ -14,7 +14,10 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
+
+from ..guardrails import GhostStrikeGuardrails
+from ..tool_governance import gate_or_refuse, capture_ad_hoc_evidence
 
 TOOL_SCHEMA: Dict = {
     "type": "function",
@@ -23,7 +26,9 @@ TOOL_SCHEMA: Dict = {
         "description": (
             "Write code to a temporary file and execute it. "
             "Use for exploit PoCs, custom parsers, payload generation, or analysis scripts. "
-            "Prefer Python or Bash. Supports: python, bash, php, go, perl, ruby, c."
+            "Prefer Python or Bash. Supports: python, bash, php, go, perl, ruby, c. "
+            "Every call requires explicit operator approval regardless of autonomy tier -- "
+            "this tool has no fixed trust classification the way run_ghoststrike_module does."
         ),
         "parameters": {
             "type": "object",
@@ -82,8 +87,26 @@ class CodeRunner:
     and returned as a string.
     """
 
-    def __init__(self, output_callback=None) -> None:
+    def __init__(
+        self,
+        output_callback=None,
+        guardrails: Optional[GhostStrikeGuardrails] = None,
+        autonomy_tier: str = "recommend",
+        approval_callback: Optional[Callable[[Dict], bool]] = None,
+        engagement_id: Optional[str] = None,
+    ) -> None:
         self._output_cb = output_callback
+        # This tool had NO guardrails and NO governance gate at all prior to
+        # this fix -- see ai_engine/tool_governance.py for why every call
+        # requires explicit approval in every autonomy tier, same as
+        # execute_shell_command. The shell-pattern guardrail is reused here
+        # as defense-in-depth even though "code" isn't literally a shell
+        # command; it still catches e.g. embedded shell-outs and base64
+        # payloads inside a script body.
+        self._guardrails    = guardrails or GhostStrikeGuardrails()
+        self._autonomy_tier = autonomy_tier
+        self._approval_cb   = approval_callback
+        self._engagement_id = engagement_id or os.getenv("GS_ENGAGEMENT_ID")
 
     def run(
         self,
@@ -105,6 +128,18 @@ class CodeRunner:
         if not _SAFE_FILENAME_RE.match(filename):
             return f"Invalid filename {filename!r}: only letters, digits, '_', and '-' are allowed."
 
+        ok, reason = self._guardrails.validate_command(code)
+        if not ok:
+            return reason
+
+        gate_msg = gate_or_refuse(
+            "execute_code", f"language={language} filename={filename}",
+            self._autonomy_tier, self._approval_cb,
+            detail={"language": language, "filename": filename, "code_preview": code[:500]},
+        )
+        if gate_msg is not None:
+            return gate_msg
+
         with tempfile.TemporaryDirectory(prefix="phantomops_code_") as tmpdir:
             script_path = os.path.join(tmpdir, f"{filename}.{ext}")
             with open(script_path, "w", encoding="utf-8") as fh:
@@ -117,6 +152,8 @@ class CodeRunner:
 
         if self._output_cb:
             self._output_cb(output)
+
+        capture_ad_hoc_evidence(self._engagement_id, "execute_code", f"[{language}] {code}", output)
 
         header = f"[Code Execution: {language} | {filename}.{ext}]\n{'─'*50}\n"
         return header + output

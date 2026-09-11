@@ -24,8 +24,8 @@ class CTFAgent(GhostStrikeAgent):
     prompt_file = "ctf_prompt.md"
 
     def _register_tools(self) -> None:
-        shell  = ShellExecutor(guardrails=self._guardrails, output_callback=self._output_cb)
-        code   = CodeRunner(output_callback=self._output_cb)
+        shell  = ShellExecutor(guardrails=self._guardrails, output_callback=self._output_cb, autonomy_tier=self._autonomy_tier, approval_callback=self._approval_cb, engagement_id=self._engagement_id)
+        code   = CodeRunner(output_callback=self._output_cb, autonomy_tier=self._autonomy_tier, approval_callback=self._approval_cb, engagement_id=self._engagement_id)
         ghost  = GhostStrikeRunner(output_callback=self._output_cb, autonomy_tier=self._autonomy_tier, approval_callback=self._approval_cb)
         http   = HttpAnalyzer()
         js     = JsAnalyzer()

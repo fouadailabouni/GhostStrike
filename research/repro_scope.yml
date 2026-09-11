@@ -1,0 +1,17 @@
+# GhostStrike engagement scope -- research/repro_scale reproducibility study.
+# Real scope declaration for the isolated lab Docker network used throughout
+# this paper's evaluation (pentest_lab_pentest_network, gateway 172.20.0.1,
+# confirmed via `docker network inspect`), not a placeholder file.
+target:
+  - 172.20.0.0/16
+  - dvwa
+  - juiceshop
+  - nodegoat
+  - webgoat
+  - wordpress
+  - ssh_server
+  - ftp_server
+  - telnet_server
+  - mysql
+  - mongodb
+exclusions: []
